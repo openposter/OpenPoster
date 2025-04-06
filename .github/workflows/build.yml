@@ -6,7 +6,7 @@ on:
 
 jobs:
   lint:
-    if: startsWith(github.event.head_commit.message, '[build]')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, '[build]')
     name: Lint
     runs-on: macos-latest
 
