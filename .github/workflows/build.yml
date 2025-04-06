@@ -15,10 +15,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        if: startsWith(github.event.head_commit.message, '[build]')
+        # if: startsWith(github.event.head_commit.message, '[build]')
 
       - name: the real deal
-        if: startsWith(github.event.head_commit.message, '[build]')
+        # if: startsWith(github.event.head_commit.message, '[build]')
         run: |
           for file in ui/*.ui; do
             xmllint --noout "$file" || {
