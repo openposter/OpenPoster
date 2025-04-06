@@ -3,16 +3,13 @@ name: Build OpenPoster
 on:
   workflow_dispatch:
   push:
-    # branches:
-    #   # problem? :P
-    #   - main
 
 jobs:
   lint:
     if: startsWith(github.event.head_commit.message, '[build]')
     name: Lint
     runs-on: macos-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -25,8 +22,7 @@ jobs:
               exit 1
             }
           done
-          
-          
+
   build:
     needs: [lint]
     strategy:
@@ -36,24 +32,16 @@ jobs:
           - name: macos-intel
             os: macos-13
             python: python3
-            cmds: |
-              cd dist
-              zip -r -y "OpenPoster-${{ matrix.config.name }}.zip" OpenPoster.app
           - name: macos-arm
             os: macos-latest
             python: python3
-            cmds: |
-              cd dist
-              zip -r -y "OpenPoster-${{ matrix.config.name }}.zip" OpenPoster.app
           - name: windows
             os: windows-latest
             python: python
-            cmds: |
-              cd dist
-              Compress-Archive -Path OpenPoster -DestinationPath "OpenPoster-${{ matrix.config.name }}.zip"
 
-    name: Build (${{ matrix.config.name }}) 
+    name: Build (${{ matrix.config.name }})
     runs-on: ${{ matrix.config.os }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -71,11 +59,21 @@ jobs:
       - name: Build
         run: ${{ matrix.config.python }} compile.py
 
-      - name: Zip App
-        run: ${{ matrix.config.cmds }}
+      - name: Zip (Windows)
+        if: matrix.config.name == 'windows'
+        run: |
+          cd dist
+          Compress-Archive -Path OpenPoster -DestinationPath "OpenPoster-${{ matrix.config.name }}.zip"
 
-      - name: Upload ZIP
+      - name: Zip (macOS)
+        if: matrix.config.name != 'windows'
+        shell: bash
+        run: |
+          cd dist
+          zip -r -y "OpenPoster-${{ matrix.config.name }}.zip" OpenPoster.app
+
+      - name: Upload app
         uses: actions/upload-artifact@v4
         with:
-          name: "OpenPoster-${{ matrix.config.name }}.zip"
-          path: "dist/OpenPoster-${{ matrix.confing.name }}.zip"
+          name: OpenPoster-${{ matrix.config.name }}
+          path: dist/OpenPoster-${{ matrix.config.name }}.zip
