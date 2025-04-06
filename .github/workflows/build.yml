@@ -9,16 +9,15 @@ on:
 
 jobs:
   lint:
+    if: startsWith(github.event.head_commit.message, '[build]')
     name: Lint
     runs-on: macos-latest
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        # if: startsWith(github.event.head_commit.message, '[build]')
 
       - name: the real deal
-        # if: startsWith(github.event.head_commit.message, '[build]')
         run: |
           for file in ui/*.ui; do
             xmllint --noout "$file" || {
@@ -29,9 +28,7 @@ jobs:
           
           
   build:
-    name: Build (${{ matrix.config.name }})
     needs: [lint]
-    runs-on: ${{ matrix.config.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -54,7 +51,9 @@ jobs:
             cmds: |
               cd dist
               Compress-Archive -Path OpenPoster -DestinationPath "OpenPoster-${{ matrix.config.name }}.zip"
-              
+
+    name: Build (${{ matrix.config.name }}) 
+    runs-on: ${{ matrix.config.os }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
