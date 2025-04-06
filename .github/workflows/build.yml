@@ -3,20 +3,22 @@ name: Build OpenPoster
 on:
   workflow_dispatch:
   push:
-    branches:
-      # problem? :P
-      - main
+    # branches:
+    #   # problem? :P
+    #   - main
 
 jobs:
   lint:
     name: Lint
     runs-on: macos-latest
-    if: startsWith(github.event.head_commit.message, '[build]')
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        if: startsWith(github.event.head_commit.message, '[build]')
 
       - name: the real deal
+        if: startsWith(github.event.head_commit.message, '[build]')
         run: |
           for file in ui/*.ui; do
             xmllint --noout "$file" || {
@@ -24,6 +26,7 @@ jobs:
               exit 1
             }
           done
+          
           
   build:
     name: Build (${{ matrix.config.name }})
