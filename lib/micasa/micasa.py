@@ -10,15 +10,15 @@ class XmlGenerator:
 
     def make_xml(
             self,
-            startFrame = 0,
-            endFrame = 1,
-            filePrefix = '',
-            fileExtension = '.png',
-            padding = 4,
-            exportAsAnimation = False,
-            fps = 30,
-            step = 1,
-            withRoot = True
+            startFrame: int = 0,
+            endFrame: int = 1,
+            filePrefix: str = '',
+            fileExtension: str = '.png',
+            padding: int = 4,
+            exportAsAnimation: bool = False,
+            fps: int = 30,
+            step: int = 1,
+            withRoot: bool = True
         ) -> et.ElementTree:
         """
             Generate multi-line xml thingy that you can insert into .caml file directly
@@ -87,7 +87,7 @@ class AnimationObjectEditor:
         self.namespace = None
 
     # file loading and writing section
-    def load_file(self, file_path) -> bool:
+    def load_file(self, file_path: str) -> bool:
         """
             Open and load the .caml into memory
         """
@@ -115,7 +115,7 @@ class AnimationObjectEditor:
             print(f"Unexpected error: {e}")
             return False
         
-    def save_file(self, file_path) -> bool:
+    def save_file(self, file_path: str) -> bool:
         """
             Don't forget the file path/name
         """
