@@ -1298,256 +1298,274 @@ class MainWindow(QMainWindow):
                         ])
                         animItem.addChild(animDetails)
 
+    # states inspector, private functions below
     def openStateInInspector(self, current, _):
         if current is None:
             return
-            
+
         self.currentSelectedItem = current
         self.ui.tableWidget.setRowCount(0)
         row_index = 0
-        
+
         element_type = current.text(1)
-        
-        # Basic info category
+
         row_index = self.add_category_header("Basic Info", row_index)
-        
         self.add_inspector_row("NAME", current.text(0), row_index)
         row_index += 1
-        
         self.add_inspector_row("TYPE", element_type, row_index)
         row_index += 1
+
+        # Route to the correct handler (my fav way)
+        handler = {
+            "State": self._handle_state,
+            "Transition": self._handle_transition,
+            "SetValue": self._handle_set_value,
+            "Animation": self._handle_animation,
+            "AddAnimation": self._handle_add_animation,
+            "TransitionElement": self._handle_transition_element,
+        }.get(element_type)
+
+        if handler:
+            handler(current, row_index)
+
+    # STATES
+    def _handle_state(self, current, row_index):
+        layer_id = current.text(2)
+        if layer_id:
+            self.add_inspector_row("LAYER ID", layer_id, row_index)
+            row_index += 1
         
-        if element_type == "State":
-            layer_id = current.text(2)
+        current.setData(0, QtCore.Qt.UserRole, layer_id)
+        
+        state_name = current.text(0)
+        layer = None
+        
+        if layer_id:
+            layer = self.cafile.rootlayer.findlayer(layer_id)
+        else:
+            layer = self.cafile.rootlayer
+        
+        if layer and hasattr(layer, "states") and state_name in layer.states:
+            state = layer.states[state_name]
+            
+            # State timing info
+            if hasattr(state, "nextDelay") or hasattr(state, "previousDelay") or hasattr(state, "basedOn"):
+                row_index = self.add_category_header("State Properties", row_index)
+                
+                if hasattr(state, "basedOn") and state.basedOn:
+                    self.add_inspector_row("BASED ON", state.basedOn, row_index)
+                    row_index += 1
+                
+                if hasattr(state, "nextDelay") and state.nextDelay:
+                    self.add_inspector_row("NEXT DELAY", self.formatFloat(state.nextDelay), row_index)
+                    row_index += 1
+                
+                if hasattr(state, "previousDelay") and state.previousDelay:
+                    self.add_inspector_row("PREVIOUS DELAY", self.formatFloat(state.previousDelay), row_index)
+                    row_index += 1
+            
+            # State elements info
+            if hasattr(state, "elements"):
+                row_index = self.add_category_header("Elements", row_index)
+                self.add_inspector_row("ELEMENT COUNT", str(len(state.elements)), row_index)
+                row_index += 1
+                
+                # Count element types
+                element_counts = {}
+                for element in state.elements:
+                    element_type = element.__class__.__name__
+                    element_counts[element_type] = element_counts.get(element_type, 0) + 1
+                
+                for element_type, count in element_counts.items():
+                    if element_type == "LKStateSetValue":
+                        self.add_inspector_row("SET VALUE ELEMENTS", str(count), row_index)
+                        row_index += 1
+                    elif element_type == "LKStateAddAnimation":
+                        self.add_inspector_row("ADD ANIMATION ELEMENTS", str(count), row_index)
+                        row_index += 1
+            
+            self.animations = []
+            
+            self.previewState(layer, state_name)
+            
+            was_playing = hasattr(self, 'animations_playing') and self.animations_playing
+            if was_playing:
+                self.animations_playing = False
+                self.toggleAnimations()
+
+    # TRANSITION
+    def _handle_transition(self, current, row_index):
+        parent = current.parent()
+        if parent and parent.parent():
+            state_item = parent.parent()
+            layer_id = state_item.text(2)
+            
+            transition_data = current.data(0, QtCore.Qt.UserRole)
+            if transition_data:
+                fromState, toState = transition_data
+            else:
+                direction_parts = current.text(0).split(" ")
+                direction = direction_parts[0]
+                other_state = " ".join(direction_parts[1:])
+                
+                if other_state == "any state":
+                    other_state = "*"
+                    
+                state_name = state_item.text(0)
+                
+                if direction == "from":
+                    fromState = state_name
+                    toState = other_state
+                else:
+                    fromState = other_state
+                    toState = state_name
+            
+            # Transition details
+            row_index = self.add_category_header("Transition Details", row_index)
+            
+            self.add_inspector_row("FROM STATE", fromState, row_index)
+            row_index += 1
+            self.add_inspector_row("TO STATE", toState, row_index)
+            row_index += 1
+            
             if layer_id:
                 self.add_inspector_row("LAYER ID", layer_id, row_index)
                 row_index += 1
             
-            current.setData(0, QtCore.Qt.UserRole, layer_id)
-            
-            state_name = current.text(0)
-            layer = None
-            
+            # Check if there's actual transition data
             if layer_id:
                 layer = self.cafile.rootlayer.findlayer(layer_id)
             else:
                 layer = self.cafile.rootlayer
             
+            if layer and hasattr(layer, "stateTransitions"):
+                transition = None
+                for t in layer.stateTransitions:
+                    if (t.fromState == fromState or t.fromState == "*") and t.toState == toState:
+                        transition = t
+                        break
+                
+                if transition:
+                    # Show more transition details if available
+                    if hasattr(transition, "elements") and transition.elements:
+                        self.add_inspector_row("ELEMENT COUNT", str(len(transition.elements)), row_index)
+                        row_index += 1
+            
+            self.animations = []
+            
+            self.previewTransition(layer_id, fromState, toState)
+            
+            was_playing = hasattr(self, 'animations_playing') and self.animations_playing
+            if was_playing:
+                self.animations_playing = False
+                self.toggleAnimations()
+
+    # SET VALUE
+    def _handle_set_value(self, current, row_index):
+        # Target information
+        row_index = self.add_category_header("Target Info", row_index)
+        
+        targetId = current.data(0, QtCore.Qt.UserRole)
+        if targetId:
+            self.add_inspector_row("TARGET ID", targetId, row_index)
+            row_index += 1
+            
+            # Try to find the target layer to show its name
+            target_layer = self.cafile.rootlayer.findlayer(targetId)
+            if target_layer and hasattr(target_layer, "name"):
+                self.add_inspector_row("TARGET NAME", target_layer.name, row_index)
+                row_index += 1
+        
+        # Value information
+        row_index = self.add_category_header("Value", row_index)
+            
+        keyPath = current.text(0)
+        if keyPath:
+            self.add_inspector_row("KEY PATH", keyPath, row_index)
+            row_index += 1
+            
+        value = current.text(2)
+        if value:
+            self.add_inspector_row("VALUE", value, row_index)
+            row_index += 1
+
+    # ANIMATION
+    def _handle_animation(self, current, row_index):
+        # Animation details
+        row_index = self.add_category_header("Animation Details", row_index)
+        
+        details = current.text(2)
+        if details:
+            for detail in details.split(", "):
+                if ":" in detail:
+                    key, value = detail.split(":", 1)
+                    self.add_inspector_row(key.strip().upper(), value.strip(), row_index)
+                    row_index += 1
+
+    # ADD ANIMATION
+    def _handle_add_animation(self, current, row_index):
+        # Target information
+        row_index = self.add_category_header("Target Info", row_index)
+        
+        targetId = current.text(2)
+        if targetId:
+            self.add_inspector_row("TARGET ID", targetId, row_index)
+            row_index += 1
+            
+            # Try to find the target layer to show its name
+            target_layer = self.cafile.rootlayer.findlayer(targetId)
+            if target_layer and hasattr(target_layer, "name"):
+                self.add_inspector_row("TARGET NAME", target_layer.name, row_index)
+                row_index += 1
+            
+        keyPath = current.text(0)
+        if keyPath:
+            self.add_inspector_row("KEY PATH", keyPath, row_index)
+            row_index += 1
+        
+        # Find the animations
+        parent = current.parent()
+        if parent and parent.text(1) == "State":
+            state_name = parent.text(0)
+            layer_id = parent.text(2)
+            
+            if layer_id:
+                layer = self.cafile.rootlayer.findlayer(layer_id)
+            else:
+                layer = self.cafile.rootlayer
+                
             if layer and hasattr(layer, "states") and state_name in layer.states:
                 state = layer.states[state_name]
-                
-                # State timing info
-                if hasattr(state, "nextDelay") or hasattr(state, "previousDelay") or hasattr(state, "basedOn"):
-                    row_index = self.add_category_header("State Properties", row_index)
-                    
-                    if hasattr(state, "basedOn") and state.basedOn:
-                        self.add_inspector_row("BASED ON", state.basedOn, row_index)
-                        row_index += 1
-                    
-                    if hasattr(state, "nextDelay") and state.nextDelay:
-                        self.add_inspector_row("NEXT DELAY", self.formatFloat(state.nextDelay), row_index)
-                        row_index += 1
-                    
-                    if hasattr(state, "previousDelay") and state.previousDelay:
-                        self.add_inspector_row("PREVIOUS DELAY", self.formatFloat(state.previousDelay), row_index)
-                        row_index += 1
-                
-                # State elements info
                 if hasattr(state, "elements"):
-                    row_index = self.add_category_header("Elements", row_index)
-                    self.add_inspector_row("ELEMENT COUNT", str(len(state.elements)), row_index)
-                    row_index += 1
-                    
-                    # Count element types
-                    element_counts = {}
                     for element in state.elements:
-                        element_type = element.__class__.__name__
-                        element_counts[element_type] = element_counts.get(element_type, 0) + 1
-                    
-                    for element_type, count in element_counts.items():
-                        if element_type == "LKStateSetValue":
-                            self.add_inspector_row("SET VALUE ELEMENTS", str(count), row_index)
-                            row_index += 1
-                        elif element_type == "LKStateAddAnimation":
-                            self.add_inspector_row("ADD ANIMATION ELEMENTS", str(count), row_index)
-                            row_index += 1
-                
-                self.animations = []
-                
-                self.previewState(layer, state_name)
-                
-                was_playing = hasattr(self, 'animations_playing') and self.animations_playing
-                if was_playing:
-                    self.animations_playing = False
-                    self.toggleAnimations()
-                
-        elif element_type == "Transition":
-            parent = current.parent()
-            if parent and parent.parent():
-                state_item = parent.parent()
-                layer_id = state_item.text(2)
-                
-                transition_data = current.data(0, QtCore.Qt.UserRole)
-                if transition_data:
-                    fromState, toState = transition_data
-                else:
-                    direction_parts = current.text(0).split(" ")
-                    direction = direction_parts[0]
-                    other_state = " ".join(direction_parts[1:])
-                    
-                    if other_state == "any state":
-                        other_state = "*"
-                        
-                    state_name = state_item.text(0)
-                    
-                    if direction == "from":
-                        fromState = state_name
-                        toState = other_state
-                    else:
-                        fromState = other_state
-                        toState = state_name
-                
-                # Transition details
-                row_index = self.add_category_header("Transition Details", row_index)
-                
-                self.add_inspector_row("FROM STATE", fromState, row_index)
-                row_index += 1
-                self.add_inspector_row("TO STATE", toState, row_index)
-                row_index += 1
-                
-                if layer_id:
-                    self.add_inspector_row("LAYER ID", layer_id, row_index)
-                    row_index += 1
-                
-                # Check if there's actual transition data
-                if layer_id:
-                    layer = self.cafile.rootlayer.findlayer(layer_id)
-                else:
-                    layer = self.cafile.rootlayer
-                
-                if layer and hasattr(layer, "stateTransitions"):
-                    transition = None
-                    for t in layer.stateTransitions:
-                        if (t.fromState == fromState or t.fromState == "*") and t.toState == toState:
-                            transition = t
-                            break
-                    
-                    if transition:
-                        # Show more transition details if available
-                        if hasattr(transition, "elements") and transition.elements:
-                            self.add_inspector_row("ELEMENT COUNT", str(len(transition.elements)), row_index)
-                            row_index += 1
-                
-                self.animations = []
-                
-                self.previewTransition(layer_id, fromState, toState)
-                
-                was_playing = hasattr(self, 'animations_playing') and self.animations_playing
-                if was_playing:
-                    self.animations_playing = False
-                    self.toggleAnimations()
-                
-        elif element_type == "SetValue":
-            # Target information
-            row_index = self.add_category_header("Target Info", row_index)
-            
-            targetId = current.data(0, QtCore.Qt.UserRole)
-            if targetId:
-                self.add_inspector_row("TARGET ID", targetId, row_index)
-                row_index += 1
-                
-                # Try to find the target layer to show its name
-                target_layer = self.cafile.rootlayer.findlayer(targetId)
-                if target_layer and hasattr(target_layer, "name"):
-                    self.add_inspector_row("TARGET NAME", target_layer.name, row_index)
-                    row_index += 1
-            
-            # Value information
-            row_index = self.add_category_header("Value", row_index)
-                
-            keyPath = current.text(0)
-            if keyPath:
-                self.add_inspector_row("KEY PATH", keyPath, row_index)
-                row_index += 1
-                
-            value = current.text(2)
-            if value:
-                self.add_inspector_row("VALUE", value, row_index)
-                row_index += 1
-                
-        elif element_type == "Animation" or element_type == "AddAnimation":
-            if element_type == "AddAnimation":
-                # Target information
-                row_index = self.add_category_header("Target Info", row_index)
-                
-                targetId = current.text(2)
-                if targetId:
-                    self.add_inspector_row("TARGET ID", targetId, row_index)
-                    row_index += 1
-                    
-                    # Try to find the target layer to show its name
-                    target_layer = self.cafile.rootlayer.findlayer(targetId)
-                    if target_layer and hasattr(target_layer, "name"):
-                        self.add_inspector_row("TARGET NAME", target_layer.name, row_index)
-                        row_index += 1
-                    
-                keyPath = current.text(0)
-                if keyPath:
-                    self.add_inspector_row("KEY PATH", keyPath, row_index)
-                    row_index += 1
-                
-                # Find the animations
-                parent = current.parent()
-                if parent and parent.text(1) == "State":
-                    state_name = parent.text(0)
-                    layer_id = parent.text(2)
-                    
-                    if layer_id:
-                        layer = self.cafile.rootlayer.findlayer(layer_id)
-                    else:
-                        layer = self.cafile.rootlayer
-                        
-                    if layer and hasattr(layer, "states") and state_name in layer.states:
-                        state = layer.states[state_name]
-                        if hasattr(state, "elements"):
-                            for element in state.elements:
-                                if element.__class__.__name__ == "LKStateAddAnimation" and element.targetId == targetId and element.keyPath == keyPath:
-                                    if hasattr(element, "animations") and element.animations:
-                                        row_index = self.add_category_header("Animations", row_index)
-                                        self.add_inspector_row("ANIMATION COUNT", str(len(element.animations)), row_index)
-                                        row_index += 1
-            else:
-                # Animation details
-                row_index = self.add_category_header("Animation Details", row_index)
-                
-                details = current.text(2)
-                if details:
-                    for detail in details.split(", "):
-                        if ":" in detail:
-                            key, value = detail.split(":", 1)
-                            self.add_inspector_row(key.strip().upper(), value.strip(), row_index)
-                            row_index += 1
+                        if element.__class__.__name__ == "LKStateAddAnimation" and element.targetId == targetId and element.keyPath == keyPath:
+                            if hasattr(element, "animations") and element.animations:
+                                row_index = self.add_category_header("Animations", row_index)
+                                self.add_inspector_row("ANIMATION COUNT", str(len(element.animations)), row_index)
+                                row_index += 1
+
+    # TRANSITION ELEMENT
+    def _handle_transition_element(self, current, row_index):
+        # Element details
+        row_index = self.add_category_header("Element Details", row_index)
         
-        elif element_type == "TransitionElement":
-            # Element details
-            row_index = self.add_category_header("Element Details", row_index)
+        key = current.text(0)
+        if key:
+            self.add_inspector_row("KEY", key, row_index)
+            row_index += 1
             
-            key = current.text(0)
-            if key:
-                self.add_inspector_row("KEY", key, row_index)
+        targetId = current.text(2)
+        if targetId:
+            self.add_inspector_row("TARGET ID", targetId, row_index)
+            row_index += 1
+            
+            # Try to find the target layer to show its name
+            target_layer = self.cafile.rootlayer.findlayer(targetId)
+            if target_layer and hasattr(target_layer, "name"):
+                self.add_inspector_row("TARGET NAME", target_layer.name, row_index)
                 row_index += 1
-                
-            targetId = current.text(2)
-            if targetId:
-                self.add_inspector_row("TARGET ID", targetId, row_index)
-                row_index += 1
-                
-                # Try to find the target layer to show its name
-                target_layer = self.cafile.rootlayer.findlayer(targetId)
-                if target_layer and hasattr(target_layer, "name"):
-                    self.add_inspector_row("TARGET NAME", target_layer.name, row_index)
-                    row_index += 1
     
+    # previewing
     def previewState(self, layer, state_name):
         if not layer or not state_name:
             return
