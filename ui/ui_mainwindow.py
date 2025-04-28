@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (QApplication, QGraphicsView, QHBoxLayout, QHeader
     QSpacerItem, QSplitter, QTableWidget, QTableWidgetItem,
     QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
-from gui.custom_widgets import CustomGraphicsView
+from gui._custom_widgets import CustomGraphicsView
 
 class Ui_OpenPoster(object):
     def setupUi(self, OpenPoster):

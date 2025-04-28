@@ -7,19 +7,27 @@ from PySide6.QtCore import Qt, QRectF, QPointF, QSize, QEvent, QVariantAnimation
 from PySide6.QtGui import QPixmap, QImage, QBrush, QPen, QColor, QTransform, QPainter, QLinearGradient, QIcon, QPalette, QFont, QShortcut, QKeySequence
 from PySide6.QtWidgets import QFileDialog, QTreeWidgetItem, QMainWindow, QTableWidgetItem, QGraphicsRectItem, QGraphicsPixmapItem, QGraphicsTextItem, QApplication, QHeaderView, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QTreeWidget, QWidget, QGraphicsItemAnimation
 from ui.ui_mainwindow import Ui_OpenPoster
-from .custom_widgets import CustomGraphicsView, CheckerboardGraphicsScene
+from ._custom_widgets import CustomGraphicsView, CheckerboardGraphicsScene
 import PySide6.QtCore as QtCore
 import platform
 import webbrowser
 
-# temporary code split for reading
+# **temporary code split for reading
+# tools
 from ._formatter import Format
 from ._parse import Parse
 from ._applyanimation import ApplyAnimation
 from ._assets import Assets
 
-from .config_manager import ConfigManager
-from .settings_dialog import SettingsDialog
+# references and stylesheets
+from ._stylesheet import DarkMode as DMSS
+from ._stylesheet import LightMode as LMSS
+from ._stylesheet import InitUI as IUSS
+from ._stylesheet import OpenFile as OFSS
+
+# settings
+from ._config_manager import ConfigManager
+from ._settings_dialog import SettingsDialog
 
 
 class MainWindow(QMainWindow):
@@ -186,67 +194,14 @@ class MainWindow(QMainWindow):
         if scene and isinstance(scene, CheckerboardGraphicsScene):
             scene.setBackgroundColor(QColor(50, 50, 50), QColor(40, 40, 40))
             scene.update()
-            
-        if hasattr(self, 'playButton'):
-            self.playButton.setStyleSheet("""
-                QPushButton { 
-                    border: none; 
-                    background-color: transparent;
-                    color: rgba(255, 255, 255, 150);
-                }
-                QPushButton:hover { 
-                    background-color: rgba(128, 128, 128, 50);
-                    border-radius: 20px;
-                }
-            """)
-            
-        if hasattr(self, 'editButton'):
-            self.editButton.setStyleSheet("""
-                QPushButton { 
-                    border: none; 
-                    background-color: transparent;
-                    color: rgba(255, 255, 255, 150);
-                }
-                QPushButton:hover { 
-                    background-color: rgba(128, 128, 128, 50);
-                    border-radius: 20px;
-                }
-                QPushButton:checked {
-                    background-color: rgba(0, 120, 215, 50);
-                    border-radius: 20px;
-                }
-            """)
-            
-        self.ui.tableWidget.setStyleSheet("""
-            QTableWidget {
-                border: none;
-                background-color: transparent;
-                gridline-color: transparent;
-                color: palette(text);
-            }
-            QTableWidget::item { 
-                padding: 8px;
-                min-height: 30px;
-            }
-            QTableWidget::item:first-column {
-                border-right: 1px solid rgba(180, 180, 180, 60);
-            }
-            QTableWidget::item:selected {
-                background-color: palette(highlight);
-                color: palette(highlighted-text);
-            }
-        """)
         
-        self.ui.tableWidget.horizontalHeader().setStyleSheet("""
-            QHeaderView::section {
-                background-color: palette(button);
-                color: palette(text);
-                padding: 8px;
-                border: none;
-                border-right: 1px solid rgba(180, 180, 180, 60);
-                border-bottom: none;
-            }
-        """)
+        # please read the comment in the _stylesheet.py
+        if hasattr(self, 'playButton'):
+            self.playButton.setStyleSheet(DMSS.playButton)
+        if hasattr(self, 'editButton'):
+            self.editButton.setStyleSheet(DMSS.editButton)
+        self.ui.tableWidget.setStyleSheet(DMSS.tableWidget)
+        self.ui.tableWidget.horizontalHeader().setStyleSheet(DMSS.tableWidgetHorizontalHeader)
     
     def applyLightModeStyles(self):
         scene = self.scene if hasattr(self, 'scene') else None
@@ -255,65 +210,11 @@ class MainWindow(QMainWindow):
             scene.update()
             
         if hasattr(self, 'playButton'):
-            self.playButton.setStyleSheet("""
-                QPushButton { 
-                    border: none; 
-                    background-color: transparent;
-                    color: rgba(0, 0, 0, 150);
-                }
-                QPushButton:hover { 
-                    background-color: rgba(128, 128, 128, 30);
-                    border-radius: 20px;
-                }
-            """)
-            
+            self.playButton.setStyleSheet(LMSS.playButton)
         if hasattr(self, 'editButton'):
-            self.editButton.setStyleSheet("""
-                QPushButton { 
-                    border: none; 
-                    background-color: transparent;
-                    color: rgba(0, 0, 0, 150);
-                }
-                QPushButton:hover { 
-                    background-color: rgba(128, 128, 128, 30);
-                    border-radius: 20px;
-                }
-                QPushButton:checked {
-                    background-color: rgba(0, 120, 215, 50);
-                    border-radius: 20px;
-                }
-            """)
-            
-        self.ui.tableWidget.setStyleSheet("""
-            QTableWidget {
-                border: none;
-                background-color: transparent;
-                gridline-color: transparent;
-                color: palette(text);
-            }
-            QTableWidget::item { 
-                padding: 8px;
-                min-height: 30px;
-            }
-            QTableWidget::item:first-column {
-                border-right: 1px solid rgba(120, 120, 120, 60);
-            }
-            QTableWidget::item:selected {
-                background-color: palette(highlight);
-                color: palette(highlighted-text);
-            }
-        """)
-        
-        self.ui.tableWidget.horizontalHeader().setStyleSheet("""
-            QHeaderView::section {
-                background-color: palette(button);
-                color: palette(text);
-                padding: 8px;
-                border: none;
-                border-right: 1px solid rgba(120, 120, 120, 60);
-                border-bottom: none;
-            }
-        """)
+            self.editButton.setStyleSheet(LMSS.editButton)
+        self.ui.tableWidget.setStyleSheet(LMSS.tableWidget)
+        self.ui.tableWidget.horizontalHeader().setStyleSheet(LMSS.tableWidgetHorizontalHeader)
 
     # gui loader section
     def initUI(self):
@@ -327,7 +228,7 @@ class MainWindow(QMainWindow):
         self.previewHeaderLayout.setContentsMargins(0, 0, 0, 0)
         self.previewHeaderLayout.setSpacing(10)
         
-        self.ui.previewLabel.setStyleSheet("font-size: 14px; padding: 5px;")
+        self.ui.previewLabel.setStyleSheet(IUSS.previewLabel)
         self.previewHeaderLayout.addWidget(self.ui.previewLabel)
         
         self.previewHeaderLayout.addStretch()
@@ -339,21 +240,7 @@ class MainWindow(QMainWindow):
         self.editButton.setFixedSize(40, 40)
         self.editButton.setIconSize(QSize(24, 24))
         self.editButton.setCheckable(True)
-        self.editButton.setStyleSheet("""
-            QPushButton { 
-                border: none; 
-                background-color: transparent;
-                color: rgba(0, 0, 0, 150);
-            }
-            QPushButton:hover { 
-                background-color: rgba(128, 128, 128, 30);
-                border-radius: 20px;
-            }
-            QPushButton:checked {
-                background-color: rgba(0, 120, 215, 50);
-                border-radius: 20px;
-            }
-        """)
+        self.editButton.setStyleSheet(IUSS.editButton)
         self.editButton.clicked.connect(self.toggleEditMode)
         self.previewHeaderLayout.addWidget(self.editButton)
         
@@ -363,17 +250,7 @@ class MainWindow(QMainWindow):
         self.playButton.setToolTip("Play/Pause Animations")
         self.playButton.setFixedSize(40, 40)
         self.playButton.setIconSize(QSize(32, 32))
-        self.playButton.setStyleSheet("""
-            QPushButton { 
-                border: none; 
-                background-color: transparent;
-                color: rgba(255, 255, 255, 150);
-            }
-            QPushButton:hover { 
-                background-color: rgba(128, 128, 128, 50);
-                border-radius: 20px;
-            }
-        """)
+        self.playButton.setStyleSheet(IUSS.playButton)
         self.playButton.clicked.connect(self.toggleAnimations)
         self.previewHeaderLayout.addWidget(self.playButton)
         
@@ -386,16 +263,7 @@ class MainWindow(QMainWindow):
         self.settingsButton.setToolTip("Settings")
         self.settingsButton.setFixedSize(40, 40)
         self.settingsButton.setIconSize(QSize(24, 24))
-        self.settingsButton.setStyleSheet("""
-            QPushButton { 
-                border: none; 
-                background-color: transparent;
-            }
-            QPushButton:hover { 
-                background-color: rgba(128, 128, 128, 30);
-                border-radius: 20px;
-            }
-        """)
+        self.settingsButton.setStyleSheet(IUSS.settingsButton)
         self.settingsButton.clicked.connect(self.showSettingsDialog)
         
         self.discordButton = QPushButton(self.ui.headerWidget)
@@ -404,16 +272,7 @@ class MainWindow(QMainWindow):
         self.discordButton.setToolTip("Open Discord")
         self.discordButton.setFixedSize(40, 40)
         self.discordButton.setIconSize(QSize(24, 24))
-        self.discordButton.setStyleSheet("""
-            QPushButton { 
-                border: none; 
-                background-color: transparent;
-            }
-            QPushButton:hover { 
-                background-color: rgba(128, 128, 128, 30);
-                border-radius: 20px;
-            }
-        """)
+        self.discordButton.setStyleSheet(IUSS.discordButton)
         self.discordButton.clicked.connect(self.openDiscord)
         
         self.ui.horizontalLayout_header.addWidget(self.discordButton)
@@ -430,37 +289,11 @@ class MainWindow(QMainWindow):
         self.ui.tableWidget.verticalHeader().setVisible(False) 
         self.ui.tableWidget.setShowGrid(False) 
         self.ui.tableWidget.setFrameStyle(0)
-        self.ui.tableWidget.setStyleSheet("""
-            QTableWidget {
-                border: none;
-                background-color: transparent;
-                gridline-color: transparent;
-            }
-            QTableWidget::item { 
-                padding: 8px;
-                min-height: 30px;
-            }
-            QTableWidget::item:first-column {
-                border-right: 1px solid rgba(120, 120, 120, 60);
-            }
-            QTableWidget::item:selected {
-                background-color: palette(highlight);
-                color: palette(highlighted-text);
-            }
-        """)
+        self.ui.tableWidget.setStyleSheet(IUSS.tableWidget)
         header_font = self.ui.tableWidget.horizontalHeader().font()
         header_font.setPointSize(header_font.pointSize() + 1)
         self.ui.tableWidget.horizontalHeader().setFont(header_font)
-        self.ui.tableWidget.horizontalHeader().setStyleSheet("""
-            QHeaderView::section {
-                background-color: palette(button);
-                color: palette(text);
-                padding: 8px;
-                border: none;
-                border-right: 1px solid rgba(120, 120, 120, 60);
-                border-bottom: none;
-            }
-        """)
+        self.ui.tableWidget.horizontalHeader().setStyleSheet(IUSS.tableWidgetHorizontalHeader)
         self.ui.tableWidget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         self.ui.tableWidget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         
@@ -512,7 +345,7 @@ class MainWindow(QMainWindow):
             self.setWindowTitle(f"OpenPoster - {os.path.basename(self.cafilepath)}")
 
             self.ui.filename.setText(self.cafilepath)
-            self.ui.filename.setStyleSheet("border: 1.5px solid palette(highlight); border-radius: 8px; padding: 5px 5px;")
+            self.ui.filename.setStyleSheet(OFSS.validPath)
             self.showFullPath = True
             self.cafile = CAFile(self.cafilepath)
             self.cachedImages = {}
@@ -533,7 +366,7 @@ class MainWindow(QMainWindow):
             self.fitPreviewToView()
         else:
             self.ui.filename.setText("No File Open")
-            self.ui.filename.setStyleSheet("border: 1.5px solid palette(highlight); border-radius: 8px; padding: 5px 5px; color: #666666; font-style: italic;")
+            self.ui.filename.setStyleSheet(OFSS.noFile)
 
     def fitPreviewToView(self):
         if not hasattr(self, 'cafilepath') or not self.cafilepath:

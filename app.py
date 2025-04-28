@@ -13,4 +13,9 @@ if __name__ == "__main__":
     widget.resize(1600, 900)
     widget.show()
 
+    # force focus
+    widget.raise_()
+    widget.activateWindow()
+    widget.setFocus()
+
     sys.exit(app.exec())
