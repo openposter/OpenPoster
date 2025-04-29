@@ -23,8 +23,19 @@ if platform == "darwin":
     # add --windowed arg for macOS
     args.append('--windowed')
     args.append('--icon=assets/openposter.icns')
+    args.append('--osx-bundle-identifier=dev.openposter.openposter')
+
+    # codesigning resources
+    try:
+        import secrets.compile_config as compile_config
+        args.append('--osx-entitlements-file=entitlements.plist')
+        args.append(f"--codesign-identity={compile_config.CODESIGN_HASH}")
+    except ImportError:
+        print("No compile_config found, ignoring codesign...")
 elif platform == "win32":
     args.append('--icon=assets/openposter.ico')
+    # add windows version info
+    args.append('--version-file=version.txt')
     args.extend(hacks)
 
 PyInstaller.__main__.run(args)
