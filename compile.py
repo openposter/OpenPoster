@@ -10,6 +10,10 @@ args = [
     '--optimize=2'
 ]
 
+# don't forget to include the assets and stuff folders
+args.append('--collect-data=icons')
+args.append('--collect-data=assets')
+
 # for some stupid reason it couldn't find pyside6 for me - anh
 hacks = [
     '--hidden-import=PySide6.QtCore',
@@ -32,10 +36,14 @@ if platform == "darwin":
         args.append(f"--codesign-identity={compile_config.CODESIGN_HASH}")
     except ImportError:
         print("No compile_config found, ignoring codesign...")
+
 elif platform == "win32":
     args.append('--icon=assets/openposter.ico')
+
     # add windows version info
     args.append('--version-file=version.txt')
+    args.append('--windowed') # or --noconsole
+
     args.extend(hacks)
 
 PyInstaller.__main__.run(args)
