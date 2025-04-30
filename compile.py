@@ -7,12 +7,13 @@ args = [
     '--onedir',
     '--noconfirm',
     '--name=OpenPoster',
-    '--optimize=2'
+    '--optimize=2',
 ]
 
-# don't forget to include the assets and stuff folders
-args.append('--collect-data=icons')
-args.append('--collect-data=assets')
+args.extend([
+    '--collect-data=assets',
+    '--collect-data=icons',
+])
 
 # for some stupid reason it couldn't find pyside6 for me - anh
 hacks = [
@@ -31,7 +32,7 @@ if platform == "darwin":
 
     # codesigning resources
     try:
-        import secrets.compile_config as compile_config
+        import secrets.compile_config as compile_config # type: ignore
         args.append('--osx-entitlements-file=entitlements.plist')
         args.append(f"--codesign-identity={compile_config.CODESIGN_HASH}")
     except ImportError:
@@ -39,7 +40,6 @@ if platform == "darwin":
 
 elif platform == "win32":
     args.append('--icon=assets/openposter.ico')
-
     # add windows version info
     args.append('--version-file=version.txt')
     args.append('--windowed') # or --noconsole
