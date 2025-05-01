@@ -14,5 +14,7 @@
         <file>icons/settings-white.svg</file>
         <file>icons/discord.svg</file>
         <file>icons/discord-white.svg</file>
+        <file>icons/save.svg</file>
+        <file>icons/save-white.svg</file>
     </qresource>
 </RCC>
