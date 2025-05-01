@@ -55,6 +55,8 @@ class MainWindow(QMainWindow):
         # set up keyboard shortcuts
         self.setupShortcuts()
 
+        self.hasUnsavedChanges = False
+
     # app resources
     def bindOperationFunctions(self):
         # TEMPORARY NAMES **not so temp now
@@ -87,7 +89,10 @@ class MainWindow(QMainWindow):
         self.settingsIconWhite = QIcon(":/icons/settings-white.svg")
         self.discordIcon = QIcon(":/icons/discord.svg")
         self.discordIconWhite = QIcon(":/icons/discord-white.svg")
+        self.saveIcon = QIcon(":/icons/save.svg")
+        self.saveIconWhite = QIcon(":/icons/save-white.svg")
         self.isDarkMode = False
+        self.hasUnsavedChanges = False
     
     # themes section
     def detectDarkMode(self):
@@ -165,6 +170,8 @@ class MainWindow(QMainWindow):
                 self.settingsButton.setIcon(self.settingsIconWhite)
             if hasattr(self, 'discordButton'):
                 self.discordButton.setIcon(self.discordIconWhite)
+            if hasattr(self, 'saveButton'):
+                self.saveButton.setIcon(self.saveIconWhite)
         else:
             self.applyLightModeStyles()
             if hasattr(self, 'editButton'):
@@ -178,6 +185,8 @@ class MainWindow(QMainWindow):
                 self.settingsButton.setIcon(self.settingsIcon)
             if hasattr(self, 'discordButton'):
                 self.discordButton.setIcon(self.discordIcon)
+            if hasattr(self, 'saveButton'):
+                self.saveButton.setIcon(self.saveIcon)
         
         if previous_dark_mode != self.isDarkMode:
             self.updateCategoryHeaders()
@@ -489,6 +498,26 @@ class MainWindow(QMainWindow):
         self.cachedImages = {}
         self.currentZoom = 1.0
 
+        self.saveButton = QPushButton(self.ui.headerWidget)
+        self.saveButton.setObjectName("saveButton")
+        self.saveButton.setIcon(self.saveIconWhite if self.isDarkMode else self.saveIcon)
+        self.saveButton.setToolTip("Save File (Ctrl+S)")
+        self.saveButton.setFixedSize(40, 40)
+        self.saveButton.setIconSize(QSize(24, 24))
+        self.saveButton.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                background-color: rgba(128, 128, 128, 30);
+                border-radius: 20px;
+            }
+        """)
+        self.saveButton.clicked.connect(self.saveFile)
+
+        self.ui.horizontalLayout_header.insertWidget(self.ui.horizontalLayout_header.count() - 2, self.saveButton)
+
     # file display section
     def toggleFilenameDisplay(self, event):
         if hasattr(self, 'cafilepath'):
@@ -502,39 +531,55 @@ class MainWindow(QMainWindow):
     def openFile(self):
         self.ui.treeWidget.clear()
         self.ui.statesTreeWidget.clear()
-        if sys.platform == "darwin":
-            self.cafilepath = QFileDialog.getOpenFileName(
-                self, "Select File", "", "Core Animation Files (*.ca)")[0]
-        else:
-            self.cafilepath = QFileDialog.getExistingDirectory(
-                self, "Select Folder", "")
+        
+        try:
+            if sys.platform == "darwin":
+                self.cafilepath = QFileDialog.getOpenFileName(
+                    self, "Select File", "", "Core Animation Files (*.ca)")[0]
+            else:
+                self.cafilepath = QFileDialog.getExistingDirectory(
+                    self, "Select Folder", "")
                 
-        if self.cafilepath:
-            self.setWindowTitle(f"OpenPoster - {os.path.basename(self.cafilepath)}")
+            if self.cafilepath:
+                self.setWindowTitle(f"OpenPoster - {os.path.basename(self.cafilepath)}")
 
-            self.ui.filename.setText(self.cafilepath)
-            self.ui.filename.setStyleSheet("border: 1.5px solid palette(highlight); border-radius: 8px; padding: 5px 5px;")
-            self.showFullPath = True
-            self.cafile = CAFile(self.cafilepath)
-            self.cachedImages = {}
-            self.missing_assets = set()
-            
-            rootItem = QTreeWidgetItem([self.cafile.rootlayer.name, "Root", self.cafile.rootlayer.id, ""])
-            self.ui.treeWidget.addTopLevelItem(rootItem)
+                self.ui.filename.setText(self.cafilepath)
+                self.ui.filename.setStyleSheet("border: 1.5px solid palette(highlight); border-radius: 8px; padding: 5px 5px;")
+                self.showFullPath = True
+                
+                try:
+                    self.cafile = CAFile(self.cafilepath)
+                    self.cachedImages = {}
+                    self.missing_assets = set()
+                    
+                    rootItem = QTreeWidgetItem([self.cafile.rootlayer.name, "Root", self.cafile.rootlayer.id, ""])
+                    self.ui.treeWidget.addTopLevelItem(rootItem)
 
-            if len(self.cafile.rootlayer._sublayerorder) > 0:
-                self.treeWidgetChildren(rootItem, self.cafile.rootlayer)
-            
-            self.populateStatesTreeWidget()
-            
-            self.scene.clear()
-            self.currentZoom = 1.0
-            self.ui.graphicsView.resetTransform()
-            self.renderPreview(self.cafile.rootlayer)
-            self.fitPreviewToView()
-        else:
-            self.ui.filename.setText("No File Open")
-            self.ui.filename.setStyleSheet("border: 1.5px solid palette(highlight); border-radius: 8px; padding: 5px 5px; color: #666666; font-style: italic;")
+                    if len(self.cafile.rootlayer._sublayerorder) > 0:
+                        self.treeWidgetChildren(rootItem, self.cafile.rootlayer)
+                    
+                    self.populateStatesTreeWidget()
+                    
+                    self.scene.clear()
+                    self.currentZoom = 1.0
+                    self.ui.graphicsView.resetTransform()
+                    self.renderPreview(self.cafile.rootlayer)
+                    self.fitPreviewToView()
+
+                    self.hasUnsavedChanges = False
+                    
+                except Exception as e:
+                    from PySide6.QtWidgets import QMessageBox
+                    QMessageBox.critical(self, "Error Opening File", f"Could not open file: {str(e)}")
+                    self.ui.filename.setText("Error Opening File")
+                    self.ui.filename.setStyleSheet("border: 1.5px solid palette(highlight); border-radius: 8px; padding: 5px 5px; color: #FF3333; font-style: italic;")
+            else:
+                self.ui.filename.setText("No File Open")
+                self.ui.filename.setStyleSheet("border: 1.5px solid palette(highlight); border-radius: 8px; padding: 5px 5px; color: #666666; font-style: italic;")
+        
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Unexpected Error", f"An unexpected error occurred: {str(e)}")
 
     def fitPreviewToView(self):
         if not hasattr(self, 'cafilepath') or not self.cafilepath:
@@ -1841,9 +1886,15 @@ class MainWindow(QMainWindow):
         settings_shortcut = QShortcut(QKeySequence("Ctrl+,"), self)
         settings_shortcut.activated.connect(self.showSettingsDialog)
         
+        save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        save_shortcut.activated.connect(self.saveFile)
+        
         if self.isMacOS:
             alt_settings_shortcut = QShortcut(QKeySequence("Meta+,"), self)
             alt_settings_shortcut.activated.connect(self.showSettingsDialog)
+            
+            alt_save_shortcut = QShortcut(QKeySequence("Meta+S"), self)
+            alt_save_shortcut.activated.connect(self.saveFile)
     
     # settings section
     def showSettingsDialog(self):
@@ -1902,9 +1953,68 @@ class MainWindow(QMainWindow):
             self.config_manager.save_window_geometry(size, position, False)
 
     def closeEvent(self, event):
+        if self.hasUnsavedChanges:
+            from PySide6.QtWidgets import QMessageBox
+            from PySide6.QtGui import QIcon
+            
+            msgBox = QMessageBox(self)
+            msgBox.setWindowTitle("Save Changes")
+            msgBox.setText("The document has been modified.")
+            msgBox.setInformativeText("Do you want to save your changes?")
+            msgBox.setStandardButtons(QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel)
+            msgBox.setDefaultButton(QMessageBox.Save)
+            
+            icon = QPixmap(":/openposter.png")
+            if not icon.isNull():
+                msgBox.setWindowIcon(QIcon(icon))
+            
+            ret = msgBox.exec()
+            
+            if ret == QMessageBox.Save:
+                self.saveFile()
+                if self.hasUnsavedChanges:  # If still has unsaved changes, user canceled save dialog
+                    event.ignore()
+                    return
+            elif ret == QMessageBox.Cancel:
+                event.ignore()
+                return
+        
         self.saveSplitterSizes()
         self.saveWindowGeometry() 
         super().closeEvent(event)
 
     def openDiscord(self):
         webbrowser.open("https://discord.gg/t3abQJjHm6")
+
+    def saveFile(self):
+        if not hasattr(self, 'cafile') or not hasattr(self, 'cafilepath'):
+            return
+            
+        if sys.platform == "darwin":
+            save_path = QFileDialog.getSaveFileName(
+                self, "Save File", "", "Core Animation Files (*.ca)")[0]
+        else:
+            save_path = QFileDialog.getExistingDirectory(
+                self, "Select Save Directory", "")
+                
+        if save_path:
+            try:
+                # If save_path doesn't have a .ca extension on macOS, add it to it
+                if sys.platform == "darwin" and not save_path.endswith(".ca"):
+                    save_path += ".ca"
+
+                filename = os.path.basename(save_path)
+                directory = os.path.dirname(save_path) if save_path.endswith(".ca") else save_path
+                
+                self.cafile.write_file(filename, directory)
+                self.hasUnsavedChanges = False
+                self.setWindowTitle(f"OpenPoster - {os.path.basename(save_path)}")
+                self.statusBar().showMessage(f"File saved successfully to {save_path}", 3000)
+            except Exception as e:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.critical(self, "Save Error", f"Failed to save file: {str(e)}")
+
+    def markAsModified(self):
+        if not self.hasUnsavedChanges:
+            self.hasUnsavedChanges = True
+            self.setWindowTitle(f"OpenPoster - {os.path.basename(self.cafilepath)} *")
