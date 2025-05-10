@@ -100,19 +100,52 @@ class MainWindow(QMainWindow):
     
     # themes section
     def detectDarkMode(self):
-        previous_dark_mode = self.isDarkMode if hasattr(self, 'isDarkMode') else False
-        
-        try:
-            app = QApplication.instance()
-            if app:
-                windowText = app.palette().color(QPalette.Active, QPalette.WindowText)
-                self.isDarkMode = windowText.lightness() > 128
-        except:
-            self.isDarkMode = False
-
-        if hasattr(self, 'ui') and previous_dark_mode != self.isDarkMode:
+        previous = getattr(self, 'isDarkMode', False)
+        new_dark = False
+        if platform.system() == 'Windows':
+            try:
+                import winreg
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize')
+                val = winreg.QueryValueEx(key, 'AppsUseLightTheme')[0]
+                new_dark = (val == 0)
+            except:
+                new_dark = False
+        else:
+            try:
+                app = QApplication.instance()
+                if app:
+                    text = app.palette().color(QPalette.Active, QPalette.WindowText)
+                    new_dark = (text.lightness() > 128)
+            except:
+                new_dark = False
+        self.isDarkMode = new_dark
+        if hasattr(self, 'ui') and previous != self.isDarkMode:
+            if self.isDarkMode:
+                self.applyDarkModeStyles()
+                if hasattr(self, 'editButton'):
+                    self.editButton.setIcon(self.editIconWhite)
+                if hasattr(self, 'playButton'):
+                    self.playButton.setIcon(self.pauseIconWhite if self.animations_playing else self.playIconWhite)
+                if hasattr(self, 'settingsButton'):
+                    self.settingsButton.setIcon(self.settingsIconWhite)
+                if hasattr(self, 'discordButton'):
+                    self.discordButton.setIcon(self.discordIconWhite)
+                if hasattr(self, 'exportButton'):
+                    self.exportButton.setIcon(self.exportIconWhite)
+            else:
+                self.applyLightModeStyles()
+                if hasattr(self, 'editButton'):
+                    self.editButton.setIcon(self.editIcon)
+                if hasattr(self, 'playButton'):
+                    self.playButton.setIcon(self.pauseIcon if self.animations_playing else self.playIcon)
+                if hasattr(self, 'settingsButton'):
+                    self.settingsButton.setIcon(self.settingsIcon)
+                if hasattr(self, 'discordButton'):
+                    self.discordButton.setIcon(self.discordIcon)
+                if hasattr(self, 'exportButton'):
+                    self.exportButton.setIcon(self.exportIcon)
             self.updateCategoryHeaders()
-            
+    
     def updateCategoryHeaders(self):
         if not hasattr(self, 'ui') or not hasattr(self.ui, 'tableWidget'):
             return
@@ -781,7 +814,7 @@ class MainWindow(QMainWindow):
                     row_index = self.add_category_header("Geometry", row_index)
                     geometry_properties = True
                 
-                if hasattr(element, "position") and element.position:
+                if element_type == "Layer" and hasattr(element, "position") and element.position:
                     pos_str = self.formatPoint(" ".join(element.position))
                     self.add_inspector_row("POSITION", pos_str, row_index)
                     row_index += 1
@@ -1113,16 +1146,16 @@ class MainWindow(QMainWindow):
         # Clear scene for fresh render
         self.scene.clear()
         
-        bounds = QRectF(0, 0, 1000, 1000)
-        if hasattr(root_layer, "bounds") and root_layer.bounds:
-            try:
-                x = float(root_layer.bounds[0])
-                y = float(root_layer.bounds[1])
-                w = float(root_layer.bounds[2])
-                h = float(root_layer.bounds[3])
-                bounds = QRectF(x, y, w, h)
-            except (ValueError, IndexError):
-                pass
+        # Treat the root layer's top-left as (0,0)
+        default_x, default_y, default_w, default_h = 0, 0, 1000, 1000
+        try:
+            root_x = float(root_layer.bounds[0]) if hasattr(root_layer, "bounds") and root_layer.bounds else default_x
+            root_y = float(root_layer.bounds[1]) if hasattr(root_layer, "bounds") and root_layer.bounds else default_y
+            root_w = float(root_layer.bounds[2]) if hasattr(root_layer, "bounds") and root_layer.bounds else default_w
+            root_h = float(root_layer.bounds[3]) if hasattr(root_layer, "bounds") and root_layer.bounds else default_h
+        except (ValueError, IndexError):
+            root_x, root_y, root_w, root_h = default_x, default_y, default_w, default_h
+        bounds = QRectF(0, 0, root_w, root_h)
         
         border_rect = QGraphicsRectItem(bounds)
         border_rect.setPen(QPen(QColor(0, 0, 0), 2))
@@ -1134,11 +1167,6 @@ class MainWindow(QMainWindow):
             base_state = root_layer.states["Base State"]
         
         root_pos = QPointF(0, 0)
-        if hasattr(root_layer, "position") and root_layer.position:
-            try:
-                root_pos = QPointF(float(root_layer.position[0]), float(root_layer.position[1]))
-            except (ValueError, IndexError):
-                pass
         
         self.renderLayer(root_layer, root_pos, QTransform(), base_state, target_state)
         
@@ -1150,6 +1178,12 @@ class MainWindow(QMainWindow):
 
     def renderLayer(self, layer, parent_pos, parent_transform, base_state=None, target_state=None):
         if hasattr(layer, "hidden") and layer.hidden:
+            return
+        if layer.id == self.cafile.rootlayer.id:
+            for layer_id in layer._sublayerorder:
+                sublayer = layer.sublayers.get(layer_id)
+                if sublayer:
+                    self.renderLayer(sublayer, QPointF(0, 0), parent_transform, base_state, target_state)
             return
 
         absolute_position = QPointF(parent_pos)
@@ -1338,18 +1372,14 @@ class MainWindow(QMainWindow):
                     pixmap_item = QGraphicsPixmapItem()
                     pixmap_item.setPixmap(pixmap)
 
-                    scale_factor = 1.0
-                    if pixmap.width() > bounds.width() or pixmap.height() > bounds.height():
-                        scale_x = bounds.width() / pixmap.width() if pixmap.width() > 0 else 1.0
-                        scale_y = bounds.height() / pixmap.height() if pixmap.height() > 0 else 1.0
-                        scale_factor = min(scale_x, scale_y)
-
+                    scale_x = bounds.width() / pixmap.width() if pixmap.width() > 0 else 1.0
+                    scale_y = bounds.height() / pixmap.height() if pixmap.height() > 0 else 1.0
                     item_transform = QTransform()
-                    item_transform.scale(scale_factor, scale_factor)
+                    item_transform.scale(scale_x, scale_y)
                     pixmap_item.setTransform(item_transform * transform)
 
-                    scaled_width = pixmap.width() * scale_factor
-                    scaled_height = pixmap.height() * scale_factor
+                    scaled_width = pixmap.width() * scale_x
+                    scaled_height = pixmap.height() * scale_y
                     pixmap_item.setTransformOriginPoint(scaled_width * anchor_point.x(),
                                                         scaled_height * anchor_point.y())
 
@@ -1519,9 +1549,16 @@ class MainWindow(QMainWindow):
     def openStateInInspector(self, current, _):
         if current is None:
             return
+        element_type = current.text(1)
+        if element_type == "State":
+            layer_id = current.text(2)
+            layer = self.cafile.rootlayer.findlayer(layer_id) if layer_id else self.cafile.rootlayer
+            state_name = current.text(0)
+            self.previewState(layer, state_name)
+            return
         self.ui.tableWidget.blockSignals(True)
         self.currentInspectObject = None
-        
+
         self.currentSelectedItem = current
         self.ui.tableWidget.setRowCount(0)
         row_index = 0
@@ -2163,14 +2200,41 @@ class MainWindow(QMainWindow):
         if layer:
             pos = item.pos()
             layer.position = [str(pos.x()), str(pos.y())]
+            scene_rect = item.mapToScene(item.boundingRect()).boundingRect()
+            w = scene_rect.width()
+            h = scene_rect.height()
+            x0, y0 = layer.bounds[0], layer.bounds[1]
+            layer.bounds = [x0, y0, str(w), str(h)]
+        if hasattr(self, 'currentInspectObject') and self.currentInspectObject == layer:
+            for r in range(self.ui.tableWidget.rowCount()):
+                label = self.ui.tableWidget.item(r, 0)
+                if not label:
+                    continue
+                key = label.text()
+                if key == 'POSITION':
+                    self.ui.tableWidget.item(r, 1).setText(self.formatPoint(' '.join(layer.position)))
+                elif key == 'BOUNDS':
+                    self.ui.tableWidget.item(r, 1).setText(self.formatPoint(' '.join(layer.bounds)))
         self.markDirty()
 
     def onTransformChanged(self, item, transform):
         layer_id = item.data(0)
         layer = self.cafile.rootlayer.findlayer(layer_id)
         if layer:
-            s = f"{transform.m11():.6f} {transform.m12():.6f} {transform.m21():.6f} {transform.m22():.6f} {transform.m31():.6f} {transform.m32():.6f}"
-            layer.transform = s
+            scene_rect = item.mapToScene(item.boundingRect()).boundingRect()
+            w = scene_rect.width()
+            h = scene_rect.height()
+            x0, y0 = layer.bounds[0], layer.bounds[1]
+            layer.bounds = [x0, y0, str(w), str(h)]
+            layer.transform = None
+        if hasattr(self, 'currentInspectObject') and self.currentInspectObject == layer:
+            for r in range(self.ui.tableWidget.rowCount()):
+                label = self.ui.tableWidget.item(r, 0)
+                if label and label.text() == 'BOUNDS':
+                    self.ui.tableWidget.item(r, 1).setText(self.formatPoint(' '.join(layer.bounds)))
+                    break
+            self.renderPreview(self.cafile.rootlayer)
+            self.fitPreviewToView()
         self.markDirty()
 
     def onInspectorChanged(self, item):
@@ -2192,6 +2256,9 @@ class MainWindow(QMainWindow):
         else:
             setattr(obj, xml_key, val)
         self.markDirty()
+        if xml_key in ['position', 'bounds']:
+            self.renderPreview(self.cafile.rootlayer)
+            self.fitPreviewToView()
 
     def zoomIn(self):
         self.ui.graphicsView.handleZoom(120)

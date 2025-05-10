@@ -337,6 +337,8 @@ class CheckerboardGraphicsScene(QGraphicsScene):
     def setEditMode(self, enabled):
         """Enable or disable edit mode"""
         self.editMode = enabled
+        for editable in self.editableItems.values():
+            editable.item.setFlag(QGraphicsItem.ItemIsMovable, enabled)
         if not enabled:
             self.clearSelection()
             for editable in self.editableItems.values():
@@ -452,6 +454,11 @@ class CheckerboardGraphicsScene(QGraphicsScene):
             self.currentEditableItem.endEdit()
             self.currentHandleItem = None
             event.accept()
+        
+        if self.isDraggingLayer and self.draggedItem:
+            editable = self.editableItems.get(id(self.draggedItem))
+            if editable:
+                editable.itemChanged.emit(editable.item)
         
         self.isDraggingLayer = False
         self.draggedItem = None

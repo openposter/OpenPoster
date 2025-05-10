@@ -5,7 +5,7 @@
 <h3>A collection of scripts to edit .ca files, all connected through a GUI powered by hope, dreams, and a bit of code.</h3>
 
 <h4>Website: https://openposter.pages.dev/</h4>
-</div><br>
+</div>
 
 <!-- back to normal markdown we go -->
 ## Building
@@ -19,24 +19,15 @@ To build the OpenPoster app:
 ## Features
 
 ### Inspector
-You can inspect these keys and their value:
-
-- name
-- type
-- keyPath
-- duration
-- beginTime
-- fillMode
-- repeatCount
-- calculationMode
-- values
-- keyTimes
-- states
+You can just read or edit in the inspector.
 
 ### Preview
-You can see the Base State's objects, such as imagges, text, and more.
+You can see the selected state's layers.
 
-### File Inspector
-You can see all the files in the .ca file.
+### Layers
+You can see all the supported layers in the .ca file.
 
-<img width="1527" alt="image" src="https://github.com/user-attachments/assets/b918ce53-07eb-4da7-ac1d-50adb432759c" /><div align="center">
+### Exporting
+You can save as a new .ca file or a .tendies file, as well as exporting to Nugget directly.
+
+<img width="1527" alt="image" src="https://github.com/user-attachments/assets/8f415f35-9110-4551-9fa0-b8c0ad029410" /><div align="center">
