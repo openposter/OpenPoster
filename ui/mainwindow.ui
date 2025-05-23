@@ -222,7 +222,7 @@
    </palette>
   </property>
   <property name="windowTitle">
-   <string>OpenPoster</string>
+   <string notr="true">OpenPoster</string>
   </property>
   <property name="styleSheet">
    <string notr="true">QWidget {
@@ -619,7 +619,7 @@ QPushButton:pressed {
         <item>
          <widget class="CustomGraphicsView" name="graphicsView">
           <property name="objectName">
-           <string>graphicsView</string>
+           <string notr="true">graphicsView</string>
           </property>
           <property name="renderHints">
            <set>QPainter::Antialiasing|QPainter::SmoothPixmapTransform</set>

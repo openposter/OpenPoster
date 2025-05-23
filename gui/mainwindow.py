@@ -16,6 +16,7 @@ import subprocess
 import tempfile, shutil
 
 import resources_rc
+from gui._meta import __version__
 
 # temporary code split for reading
 from ._formatter import Format
@@ -28,12 +29,14 @@ from .settings_window import SettingsDialog
 from .exportoptions_window import ExportOptionsDialog
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, config_manager, translator):
         super(MainWindow, self).__init__()
         self.scene: CheckerboardGraphicsScene = None
 
         # config manager
-        self.config_manager = ConfigManager()
+        self.config_manager = config_manager
+        # translator
+        self.translator = translator
         # Clear nugget-exports cache on startup
         self._clear_nugget_exports_cache()
 
@@ -61,6 +64,8 @@ class MainWindow(QMainWindow):
         # set up keyboard shortcuts
         self.setupShortcuts()
         self.isDirty = False
+        
+        print(f"OpenPoster v{__version__} started")
 
     # app resources
     def bindOperationFunctions(self):
@@ -175,6 +180,22 @@ class MainWindow(QMainWindow):
             print("Foundation module not available - dark mode detection limited")
             self.detectDarkMode()
     
+    def changeEvent(self, event: QtCore.QEvent):
+        # if event.type() == QEvent.ApplicationPaletteChange:
+        #     self.updateAppearanceForMac()
+        # if event.type() == QEvent.ApplicationFontChange:
+        #     self.updateCategoryHeaders()
+        if event.type() == QtCore.QEvent.LanguageChange:
+            # self.ui.retranslateUi(self)
+            self.retranslateUi()
+            self.updateCategoryHeaders()
+        super().changeEvent(event)
+    
+    def retranslateUi(self):
+        # super().retranslateUi(self);
+        self.ui.retranslateUi(self)
+        # :3
+        
     def eventFilter(self, obj, event):
         if event.type() == QEvent.ApplicationPaletteChange:
             self.updateAppearanceForMac()
@@ -615,70 +636,66 @@ class MainWindow(QMainWindow):
         
         self.ui.graphicsView.updateContentFittingZoom(all_items_rect)
         
-        self.ui.graphicsView.fitInView(all_items_rect, Qt.KeepAspectRatio)
+        # Use Qt.AspectRatioMode.KeepAspectRatio for correct enum access
+        self.ui.graphicsView.fitInView(all_items_rect, Qt.AspectRatioMode.KeepAspectRatio)
         
         transform = self.ui.graphicsView.transform()
         self.currentZoom = transform.m11()
 
     # only called like once
-    def treeWidgetChildren(self, item, layer):
-        for id in layer._sublayerorder:
-            sublayer = layer.sublayers.get(id)
-            childItem = QTreeWidgetItem([sublayer.name, "Layer", sublayer.id, layer.id])
+    def treeWidgetChildren(self, item: QTreeWidgetItem, layer) -> None:
+        for id in getattr(layer, '_sublayerorder', []):
+            sublayer = getattr(layer, 'sublayers', {}).get(id)
+            if sublayer is None:
+                continue
+            childItem = QTreeWidgetItem([getattr(sublayer, 'name', ''), "Layer", getattr(sublayer, 'id', ''), getattr(layer, 'id', '')])
             
             if hasattr(self, 'missing_assets') and hasattr(sublayer, '_content') and sublayer._content is not None:
                 if hasattr(sublayer, 'content') and hasattr(sublayer.content, 'src'):
                     if sublayer.content.src in self.missing_assets:
-                        childItem.setText(0, "⚠️ " + sublayer.name)
+                        childItem.setText(0, "⚠️ " + getattr(sublayer, 'name', ''))
                         childItem.setForeground(0, QColor(255, 0, 0))
             
             item.addChild(childItem)
 
-            if len(sublayer._sublayerorder) > 0:
+            if hasattr(sublayer, '_sublayerorder') and len(sublayer._sublayerorder) > 0:
                 self.treeWidgetChildren(childItem, sublayer)
-            if sublayer._animations is not None:
-                for animation in sublayer.animations:
-                    animItem = QTreeWidgetItem([animation.keyPath, "Animation", "", sublayer.id])
-                    childItem.addChild(animItem)
-
-    # inspector section
-    def openInInspector(self, current, _):
+            if hasattr(sublayer, '_animations') and sublayer._animations is not None:
+                for animation in getattr(sublayer, 'animations', []):
+                    animItem = QTreeWidgetItem([getattr(animation, 'keyPath', ''), "Animation", "", getattr(sublayer, 'id', '')])
+    def openInInspector(self, current: QTreeWidgetItem, _) -> None:
+        # Inspector for tree widget item selection
         if current is None:
             return
         self.ui.tableWidget.blockSignals(True)
         self.currentInspectObject = None
-        
+
         self.currentSelectedItem = current
         self.ui.tableWidget.setRowCount(0)
         row_index = 0
-        
-        
+
         element_type = current.text(1)
         if element_type == "Animation":
             parent = self.cafile.rootlayer.findlayer(current.text(3))
-            element = parent.findanimation(current.text(0))
+            element = parent.findanimation(current.text(0)) if parent is not None else None
             if element:
                 self.currentInspectObject = element
                 row_index = self.add_category_header("Basic Info", row_index)
-                
                 self.add_inspector_row("NAME", current.text(0), row_index)
                 row_index += 1
-                
                 self.add_inspector_row("TYPE", element.type, row_index)
                 row_index += 1
-                
-                self.add_inspector_row("KEYPATH", element.keyPath, row_index)
-                row_index += 1
-                
-                timing_properties = False
-                if (hasattr(element, "duration") and element.duration) or \
-                   (hasattr(element, "beginTime") and element.beginTime) or \
-                   (hasattr(element, "fillMode") and element.fillMode) or \
-                   (hasattr(element, "removedOnCompletion") and element.removedOnCompletion) or \
-                   (hasattr(element, "repeatCount") and element.repeatCount) or \
-                   (hasattr(element, "calculationMode") and element.calculationMode):
+
+                # Timing properties
+                if (
+                    (hasattr(element, "duration") and element.duration)
+                    or (hasattr(element, "beginTime") and element.beginTime)
+                    or (hasattr(element, "fillMode") and element.fillMode)
+                    or (hasattr(element, "removedOnCompletion") and element.removedOnCompletion)
+                    or (hasattr(element, "repeatCount") and element.repeatCount)
+                    or (hasattr(element, "calculationMode") and element.calculationMode)
+                ):
                     row_index = self.add_category_header("Timing", row_index)
-                    timing_properties = True
                 
                 if hasattr(element, "duration") and element.duration:
                     self.add_inspector_row("DURATION", self.formatFloat(element.duration), row_index)
@@ -687,96 +704,84 @@ class MainWindow(QMainWindow):
                 if hasattr(element, "beginTime") and element.beginTime:
                     self.add_inspector_row("BEGIN TIME", self.formatFloat(element.beginTime), row_index)
                     row_index += 1
-                
+                if hasattr(element, "duration") and element.duration:
+                    self.add_inspector_row("DURATION", self.formatFloat(element.duration), row_index)
+                    row_index += 1
+
+                if hasattr(element, "beginTime") and element.beginTime:
+                    self.add_inspector_row("BEGIN TIME", self.formatFloat(element.beginTime), row_index)
+                    row_index += 1
+
                 if hasattr(element, "fillMode") and element.fillMode:
                     self.add_inspector_row("FILL MODE", element.fillMode, row_index)
                     row_index += 1
-                
-                if hasattr(element, "removedOnCompletion") and element.removedOnCompletion: # Due tomorrow, do tomorrow' Use a bool
+
+                if hasattr(element, "removedOnCompletion") and element.removedOnCompletion:
                     self.add_inspector_row("REMOVED ON COMPLETION", element.removedOnCompletion, row_index)
                     row_index += 1
-                
+
                 if hasattr(element, "repeatCount") and element.repeatCount:
                     self.add_inspector_row("REPEAT COUNT", self.formatFloat(element.repeatCount), row_index)
                     row_index += 1
-                
+
                 if hasattr(element, "calculationMode") and element.calculationMode:
                     self.add_inspector_row("CALCULATION MODE", element.calculationMode, row_index)
                     row_index += 1
-                
-                if element.type == "CASpringAnimation":
+
+                # Spring Animation properties
+                if getattr(element, "type", "") == "CASpringAnimation":
                     row_index = self.add_category_header("Spring Properties", row_index)
-                    
                     if hasattr(element, "damping") and element.damping:
                         self.add_inspector_row("DAMPING", self.formatFloat(element.damping), row_index)
                         row_index += 1
-                    
                     if hasattr(element, "mass") and element.mass:
                         self.add_inspector_row("MASS", self.formatFloat(element.mass), row_index)
                         row_index += 1
-                    
                     if hasattr(element, "stiffness") and element.stiffness:
                         self.add_inspector_row("STIFFNESS", self.formatFloat(element.stiffness), row_index)
                         row_index += 1
-                    
                     if hasattr(element, "velocity") and element.velocity:
                         self.add_inspector_row("VELOCITY", self.formatFloat(element.velocity), row_index)
                         row_index += 1
-                    
                     if hasattr(element, "mica_autorecalculatesDuration"):
-                        self.add_inspector_row("AUTO RECALCULATES DURATION", 
-                                             element.mica_autorecalculatesDuration, row_index)
+                        self.add_inspector_row("AUTO RECALCULATES DURATION", element.mica_autorecalculatesDuration, row_index)
                         row_index += 1
-                
-                if element.type == "CAKeyframeAnimation":
+
+                # Keyframe Animation properties
+                if getattr(element, "type", "") == "CAKeyframeAnimation":
                     row_index = self.add_category_header("Keyframe Data", row_index)
-                    
                     if hasattr(element, "values") and element.values:
-                        values_str = ", ".join([self.formatFloat(value.value) for value in element.values])
+                        values_str = ", ".join([str(self.formatFloat(value.value)) for value in element.values])
                         self.add_inspector_row("VALUES", values_str, row_index)
                         row_index += 1
-                    
                     if hasattr(element, "keyTimes") and element.keyTimes:
-                        times_str = ", ".join([self.formatFloat(time.value) for time in element.keyTimes])
+                        times_str = ", ".join([str(self.formatFloat(time.value)) for time in element.keyTimes])
                         self.add_inspector_row("KEY TIMES", times_str, row_index)
                         row_index += 1
-                    
                     if hasattr(element, "timingFunctions") and element.timingFunctions:
                         self.add_inspector_row("TIMING FUNCTIONS", str(len(element.timingFunctions)), row_index)
                         row_index += 1
-                    
                     if hasattr(element, "path") and element.path:
                         self.add_inspector_row("PATH", "Path Animation", row_index)
                         row_index += 1
-                
-                if element.type == "CAMatchMoveAnimation":
+
+                # Match Move Animation properties
+                if getattr(element, "type", "") == "CAMatchMoveAnimation":
                     row_index = self.add_category_header("Match Move Properties", row_index)
-                    
                     if hasattr(element, "additive") and element.additive:
                         self.add_inspector_row("ADDITIVE", element.additive, row_index)
                         row_index += 1
-                    
                     if hasattr(element, "appliesX") and element.appliesX:
                         self.add_inspector_row("APPLIES X", element.appliesX, row_index)
                         row_index += 1
-                    
                     if hasattr(element, "appliesY") and element.appliesY:
                         self.add_inspector_row("APPLIES Y", element.appliesY, row_index)
                         row_index += 1
-                    
                     if hasattr(element, "appliesScale") and element.appliesScale:
                         self.add_inspector_row("APPLIES SCALE", element.appliesScale, row_index)
                         row_index += 1
-                    
                     if hasattr(element, "appliesRotation") and element.appliesRotation:
                         self.add_inspector_row("APPLIES ROTATION", element.appliesRotation, row_index)
-                        row_index += 1
-                
-                if element.type == "LKAnimationGroup":
-                    row_index = self.add_category_header("Animation Group", row_index)
-                    
-                    if hasattr(element, "animations") and element.animations:
-                        self.add_inspector_row("SUB ANIMATIONS", str(len(element.animations)), row_index)
                         row_index += 1
                 
                 self.highlightAnimationInPreview(parent, element)
@@ -2251,7 +2256,8 @@ class MainWindow(QMainWindow):
             return
         orig_val = getattr(obj, xml_key)
         if isinstance(orig_val, list):
-            nums = re.findall(r'-?\d+\.?\d*', val)
+            # extract all numbers from the stringified list
+            nums = re.findall(r'-?\d+\.?\d*', str(orig_val))
             setattr(obj, xml_key, nums)
         else:
             setattr(obj, xml_key, val)
