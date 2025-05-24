@@ -49,19 +49,20 @@ jobs:
             lrelease "$ts" -qm "${ts%.ts}.qm"
           done
 
-      - name: Stage and commit translations
-        run: |
-          git config --global user.email "actions@github.com"
-          git config --global user.name "GitHub Actions"
+      # - name: Stage and commit translations
+      #   if: false
+      #   run: |
+      #     git config --global user.email "actions@github.com"
+      #     git config --global user.name "GitHub Actions"
 
-          git add languages/*.qm
-          git commit -m "ci: update translations" || echo "No changes to commit :3"
-          # i'm sorry!!
-          if [[ "$GITHUB_ACTOR" != "nektos/act" ]]; then
-            git push origin HEAD:main --force
-          else
-            echo "dry run, not actually pushing ^v^"
-          fi
+      #     git add languages/*.qm
+      #     git commit -m "ci: update translations" || echo "No changes to commit :3"
+      #     # i'm sorry!!
+      #     if [[ "$GITHUB_ACTOR" != "nektos/act" ]]; then
+      #       git push origin HEAD:main --force
+      #     else
+      #       echo "dry run, not actually pushing ^v^"
+      #     fi
           
   build:
     needs: [compile-translations]
