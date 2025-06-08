@@ -2395,3 +2395,37 @@ class MainWindow(QMainWindow):
         if os.path.exists(export_dir):
             shutil.rmtree(export_dir)
         os.makedirs(export_dir, exist_ok=True)
+
+    def open_project(self, path):
+        """
+        Open a .ca project from the given path (used for macOS file association).
+        """
+        if not path or not os.path.exists(path):
+            QMessageBox.warning(self, "Open Error", f"The file or folder does not exist: {path}")
+            return
+        self.ui.treeWidget.clear()
+        self.ui.statesTreeWidget.clear()
+        self.cafilepath = path
+        self.setWindowTitle(f"OpenPoster - {os.path.basename(self.cafilepath)}")
+        self.ui.filename.setText(self.cafilepath)
+        self.ui.filename.setStyleSheet("font-style: normal; color: palette(text); border: 1.5px solid palette(highlight); border-radius: 8px; padding: 5px 10px;")
+        self.showFullPath = True
+        self.cafile = CAFile(self.cafilepath)
+        self.cachedImages = {}
+        self.missing_assets = set()
+        rootItem = QTreeWidgetItem([self.cafile.rootlayer.name, "Root", self.cafile.rootlayer.id, ""])
+        self.ui.treeWidget.addTopLevelItem(rootItem)
+        if len(self.cafile.rootlayer._sublayerorder) > 0:
+            self.treeWidgetChildren(rootItem, self.cafile.rootlayer)
+        self.populateStatesTreeWidget()
+        if hasattr(self._applyAnimation, 'animations'):
+            self._applyAnimation.animations.clear()
+        self.animations = []
+        self.scene.clear()
+        self.currentZoom = 1.0
+        self.ui.graphicsView.resetTransform()
+        self.renderPreview(self.cafile.rootlayer)
+        if hasattr(self._applyAnimation, 'animations'):
+            self.animations = list(self._applyAnimation.animations)
+        self.fitPreviewToView()
+        self.isDirty = False

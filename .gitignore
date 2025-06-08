@@ -2,6 +2,5 @@
 *.pyc
 /build
 /dist
-*.spec
 secrets
 .compile+codesign.sh
