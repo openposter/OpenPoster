@@ -98,7 +98,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Build
-        run: pyinstaller OpenPoster.spec
+        run: ${{ matrix.config.python }} compile.py
 
       - name: Zip (Windows)
         if: matrix.config.name == 'windows'

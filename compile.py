@@ -1,11 +1,13 @@
 from sys import platform
-
 import PyInstaller.__main__
+import os
+import re
+import subprocess
 
 args = [
     'app.py',
     '--onedir',
-    '--noconfirm',
+    # '--noconfirm',
     '--name=OpenPoster',
     '--optimize=2',
 ]
@@ -49,4 +51,45 @@ elif platform == "win32":
 
     args.extend(hacks)
 
-PyInstaller.__main__.run(args)
+if platform == "darwin":
+    subprocess.run(['pyi-makespec'] + args)
+    print(['pyi-makespec'] + args)
+
+    spec_path = 'OpenPoster.spec'
+    info_plist = '''    info_plist={
+        'NSPrincipalClass': 'NSApplication',
+        'CFBundleDocumentTypes': [
+            {
+                'CFBundleTypeName': 'OpenPoster Project',
+                'CFBundleTypeRole': 'Editor',
+                'CFBundleTypeIconFile': 'openposter.icns',
+                'LSItemContentTypes': ['dev.openposter.openposter.ca'],
+                'LSTypeIsPackage': True,
+            }
+        ],
+        'UTExportedTypeDeclarations': [
+            {
+                'UTTypeIdentifier': 'dev.openposter.openposter.ca',
+                'UTTypeDescription': 'OpenPoster Project',
+                'UTTypeConformsTo': ['com.apple.package'],
+                'UTTypeTagSpecification': {
+                    'public.filename-extension': ['ca'],
+                },
+            }
+        ],
+    },
+'''
+    if os.path.exists(spec_path):
+        with open(spec_path, 'r') as f:
+            content = f.read()
+        if 'info_plist=' in content:
+            content = re.sub(r'info_plist\s*=\s*\{[\s\S]+?\},', info_plist, content, flags=re.DOTALL)
+        else:
+            content = re.sub(r'(BUNDLE\([^)]+)', r'\1' + info_plist, content, flags=re.DOTALL)
+        with open(spec_path, 'w') as f:
+            f.write(content)
+        print("Patched info_plist into OpenPoster.spec for macOS.")
+
+    PyInstaller.__main__.run(['OpenPoster.spec', '--noconfirm'])
+else:
+    PyInstaller.__main__.run(args)
