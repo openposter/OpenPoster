@@ -53,7 +53,6 @@ elif platform == "win32":
 
 if platform == "darwin":
     subprocess.run(['pyi-makespec'] + args)
-    print(['pyi-makespec'] + args)
 
     spec_path = 'OpenPoster.spec'
     info_plist = '''    info_plist={
