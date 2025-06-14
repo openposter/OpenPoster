@@ -5,3 +5,4 @@
 *.spec
 secrets
 .compile+codesign.sh
+.vscode/
