@@ -5,7 +5,7 @@ from lib.ca_elements.core import CAFile, CALayer
 from PySide6 import QtCore
 from PySide6.QtCore import Qt, QRectF, QPointF, QSize, QEvent, QVariantAnimation, QKeyCombination, QKeyCombination, QTimer, QSettings, QStandardPaths, QDir, QObject, QProcess, QByteArray, QBuffer, QIODevice, QXmlStreamReader, QPoint, QMimeData, QRegularExpression, QTranslator
 from PySide6.QtGui import QPixmap, QImage, QBrush, QPen, QColor, QTransform, QPainter, QLinearGradient, QIcon, QPalette, QFont, QShortcut, QKeySequence, QAction, QCursor
-from PySide6.QtWidgets import QFileDialog, QTreeWidgetItem, QMainWindow, QTableWidgetItem, QGraphicsRectItem, QGraphicsPixmapItem, QGraphicsTextItem, QApplication, QHeaderView, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QTreeWidget, QWidget, QGraphicsItemAnimation, QMessageBox, QDialog, QColorDialog, QProgressDialog, QSizePolicy, QSplitter, QFrame, QToolButton, QGraphicsView, QGraphicsScene, QStyleFactory, QSpacerItem, QMenu, QLineEdit, QTableWidget, QTableWidgetItem, QSystemTrayIcon, QGraphicsProxyWidget, QGraphicsDropShadowEffect, QMenu, QTreeWidgetItemIterator, QInputDialog
+from PySide6.QtWidgets import QFileDialog, QTreeWidgetItem, QMainWindow, QTableWidgetItem, QGraphicsRectItem, QGraphicsPixmapItem, QGraphicsTextItem, QApplication, QHeaderView, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QTreeWidget, QWidget, QGraphicsItemAnimation, QMessageBox, QDialog, QColorDialog, QProgressDialog, QSizePolicy, QSplitter, QFrame, QToolButton, QGraphicsView, QGraphicsScene, QStyleFactory, QSpacerItem, QMenu, QLineEdit, QTableWidget, QTableWidgetItem, QSystemTrayIcon, QGraphicsProxyWidget, QGraphicsDropShadowEffect, QMenu, QTreeWidgetItemIterator, QInputDialog, QComboBox
 from ui.ui_mainwindow import Ui_OpenPoster
 from .custom_widgets import CustomGraphicsView, CheckerboardGraphicsScene
 import PySide6.QtCore as QtCore
@@ -14,6 +14,7 @@ import webbrowser
 import re
 import subprocess
 import tempfile, shutil
+import zipfile
 
 import resources_rc
 from gui._meta import __version__
@@ -29,34 +30,32 @@ from .settings_window import SettingsDialog
 from .exportoptions_window import ExportOptionsDialog
 
 class MainWindow(QMainWindow):
-    def __init__(self, config_manager, translator):
+    def __init__(self, config_manager=None, translator=None):
         super().__init__()
-        self.scene: CheckerboardGraphicsScene = None
-
+        self.scene = None  # Will be initialized later
+        
         # config manager
         self.config_manager = config_manager
         # translator
         self.translator = translator
         # Clear nugget-exports cache on startup
         self._clear_nugget_exports_cache()
-
+        
         self.animations_playing = False # Initialize animations_playing earlier
         self.animations = [] # Initialize animations list earlier
         self.shortcuts_list = [] # Initialize list to store shortcuts
         self.theme_change_callbacks = [] # For notifying dialogs of theme changes
-
+        
         # app resources then load
         self.bindOperationFunctions()
         self.loadIconResources()
-
+        
         self.ui = Ui_OpenPoster()
         self.ui.setupUi(self)
         
         self.isMacOS = platform.system() == "Darwin"
-        if self.isMacOS:
-            self.setupSystemAppearanceDetection()
-        else:
-            self.detectDarkMode()
+        
+        self.apply_theme_from_settings()
         
         self.initUI()
         
@@ -66,8 +65,87 @@ class MainWindow(QMainWindow):
         # set up keyboard shortcuts
         self.setupShortcuts()
         self.isDirty = False
+
+    def apply_theme_from_settings(self):
+        """Apply theme based on user preference from settings"""
+        if not self.config_manager:
+            self.detectDarkMode()
+            return
+            
+        theme_setting = self.config_manager.get_theme()
         
-        # print(f"OpenPoster v{__version__} started") # Commented out startup message
+        if theme_setting == "system":
+            self.detectDarkMode()
+        elif theme_setting == "dark":
+            self.isDarkMode = True
+            self.applyDarkModeStyles()
+        elif theme_setting == "light":
+            self.isDarkMode = False
+            self.applyLightModeStyles()
+
+        self.updateButtonIcons()
+        
+        self.updateCategoryHeaders()
+        
+        for callback in self.theme_change_callbacks:
+            try:
+                callback(self.isDarkMode)
+            except Exception as e:
+                print(f"Error in theme change callback: {e}")
+            
+        app = QApplication.instance()
+        if app:
+            qss_file = "themes/dark_style.qss" if self.isDarkMode else "themes/light_style.qss"
+            qss_path = self.findAssetPath(qss_file)
+            if qss_path and os.path.exists(qss_path):
+                try:
+                    with open(qss_path, "r") as f:
+                        app.setStyleSheet(f.read())
+                except Exception as e:
+                    print(f"Error applying global QSS: {e}")
+
+    def detectDarkMode(self):
+        previous_dark_mode_state = getattr(self, 'isDarkMode', False)
+        new_dark_mode_detected = False
+        if platform.system() == 'Windows':
+            try:
+                import winreg
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize')
+                val = winreg.QueryValueEx(key, 'AppsUseLightTheme')[0]
+                new_dark_mode_detected = (val == 0)
+            except:
+                new_dark_mode_detected = False
+        else:
+            try:
+                app = QApplication.instance()
+                if app:
+                    text = app.palette().color(QPalette.Active, QPalette.WindowText)
+                    new_dark_mode_detected = (text.lightness() > 128)
+            except:
+                new_dark_mode_detected = False
+        self.isDarkMode = new_dark_mode_detected
+        if hasattr(self, 'ui') and previous_dark_mode_state != self.isDarkMode:
+            if self.isDarkMode:
+                self.applyDarkModeStyles()
+            else:
+                self.applyLightModeStyles()
+    
+    def update_ui_icons(self):
+        """Update UI icons based on current theme"""
+        if hasattr(self, 'ui'):
+            if hasattr(self.ui, 'editButton'):
+                self.ui.editButton.setIcon(self.editIconWhite if self.isDarkMode else self.editIcon)
+            if hasattr(self.ui, 'playButton'):
+                if hasattr(self, 'is_playing') and self.is_playing:
+                    self.ui.playButton.setIcon(self.pauseIconWhite if self.isDarkMode else self.pauseIcon)
+                else:
+                    self.ui.playButton.setIcon(self.playIconWhite if self.isDarkMode else self.playIcon)
+            if hasattr(self.ui, 'settingsButton'):
+                self.ui.settingsButton.setIcon(self.settingsIconWhite if self.isDarkMode else self.settingsIcon)
+            if hasattr(self.ui, 'exportButton'):
+                self.ui.exportButton.setIcon(self.exportIconWhite if self.isDarkMode else self.exportIcon)
+            if hasattr(self.ui, 'addButton'):
+                self.ui.addButton.setIcon(self.addIconWhite if self.isDarkMode else self.addIcon)
 
     # app resources
     def bindOperationFunctions(self):
@@ -137,33 +215,6 @@ class MainWindow(QMainWindow):
             self.ui.addButton.setIcon(self.addIconWhite if self.isDarkMode else self.addIcon)
 
     # themes section
-    def detectDarkMode(self):
-        previous_dark_mode_state = getattr(self, 'isDarkMode', False)
-        new_dark_mode_detected = False
-        if platform.system() == 'Windows':
-            try:
-                import winreg
-                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize')
-                val = winreg.QueryValueEx(key, 'AppsUseLightTheme')[0]
-                new_dark_mode_detected = (val == 0)
-            except:
-                new_dark_mode_detected = False
-        else:
-            try:
-                app = QApplication.instance()
-                if app:
-                    text = app.palette().color(QPalette.Active, QPalette.WindowText)
-                    new_dark_mode_detected = (text.lightness() > 128)
-            except:
-                new_dark_mode_detected = False
-        self.isDarkMode = new_dark_mode_detected
-        if hasattr(self, 'ui') and previous_dark_mode_state != self.isDarkMode:
-            if self.isDarkMode:
-                self.applyDarkModeStyles()
-            else:
-                self.applyLightModeStyles()
-            self.updateCategoryHeaders()
-    
     def updateCategoryHeaders(self):
         if not hasattr(self, 'ui') or not hasattr(self.ui, 'tableWidget'):
             return
@@ -325,46 +376,48 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'ui') and hasattr(self.ui, 'playButton'): # Check self.ui
             self.ui.playButton.setStyleSheet(f"QPushButton {{ color: rgba(255, 255, 255, 150); {common_toolbar_button_style} }} QPushButton:hover {{ background-color: rgba(255,255,255,0.1); }} QPushButton:pressed {{ background-color: rgba(255,255,255,0.2); }}")
 
-        self.ui.tableWidget.setStyleSheet("""
-            QTableWidget {
-                border: none;
-                background-color: transparent;
-                gridline-color: transparent;
-                color: palette(text);
-            }
-            QTableWidget::item { 
-                padding: 8px;
-                min-height: 30px;
-            }
-            QTableWidget::item:first-column {
-                border-right: 1px solid rgba(180, 180, 180, 60);
-            }
-            QTableWidget::item:selected {
-                background-color: palette(highlight);
-                color: palette(highlighted-text);
-            }
-        """)
-        
-        self.ui.tableWidget.horizontalHeader().setStyleSheet("""
-            QHeaderView::section {
-                background-color: palette(button); /* Adapts to QSS */
-                color: palette(text); /* Adapts to QSS */
-                padding: 8px;
-                border: none;
-                border-right: 1px solid rgba(180, 180, 180, 60); /* Might need adjustment based on QSS */
-                border-bottom: none;
-            }
-        """)
+        if hasattr(self.ui, 'tableWidget'):
+            self.ui.tableWidget.setStyleSheet("""
+                QTableWidget {
+                    border: none;
+                    background-color: transparent;
+                    gridline-color: transparent;
+                    color: #D0D0D0;
+                }
+                QTableWidget::item { 
+                    padding: 8px;
+                    min-height: 30px;
+                    color: #D0D0D0;
+                }
+                QTableWidget::item:first-column {
+                    border-right: 1px solid rgba(180, 180, 180, 60);
+                }
+                QTableWidget::item:selected {
+                    background-color: #505050;
+                    color: #FFFFFF;
+                }
+            """)
+            
+            self.ui.tableWidget.horizontalHeader().setStyleSheet("""
+                QHeaderView::section {
+                    background-color: #424242;
+                    color: #D0D0D0;
+                    padding: 8px;
+                    border: none;
+                    border-right: 1px solid #606060;
+                    border-bottom: none;
+                }
+            """)
 
         # Style for QTreeWidget headers
         tree_header_style = """
             QHeaderView::section {
-                background-color: palette(button);
-                color: palette(text);
+                background-color: #424242;
+                color: #D0D0D0;
                 padding: 2px;
                 border: none;
-                border-bottom: 1px solid palette(midlight);
-                border-right: 1px solid palette(midlight);
+                border-bottom: 1px solid #606060;
+                border-right: 1px solid #606060;
             }
             QHeaderView::section:first {
                 border-left: none;
@@ -372,12 +425,41 @@ class MainWindow(QMainWindow):
         """
         if hasattr(self.ui, 'treeWidget') and self.ui.treeWidget:
             self.ui.treeWidget.header().setStyleSheet(tree_header_style)
+            self.ui.treeWidget.setStyleSheet("""
+                QTreeWidget {
+                    background-color: transparent;
+                    color: #D0D0D0;
+                }
+                QTreeWidget::item {
+                    color: #D0D0D0;
+                }
+                QTreeWidget::item:selected {
+                    background-color: #505050;
+                    color: #FFFFFF;
+                }
+            """)
+            
         if hasattr(self.ui, 'statesTreeWidget') and self.ui.statesTreeWidget:
             self.ui.statesTreeWidget.header().setStyleSheet(tree_header_style)
+            self.ui.statesTreeWidget.setStyleSheet("""
+                QTreeWidget {
+                    background-color: transparent;
+                    color: #D0D0D0;
+                }
+                QTreeWidget::item {
+                    color: #D0D0D0;
+                }
+                QTreeWidget::item:selected {
+                    background-color: #505050;
+                    color: #FFFFFF;
+                }
+            """)
 
         self.updateButtonIcons() 
         self.updateCategoryHeaders() 
-        self.ui.retranslateUi(self)
+        
+        if hasattr(self.ui, 'retranslateUi'):
+            self.ui.retranslateUi(self)
 
         # Explicitly style problematic UI elements for dark mode
         dark_border_color = "#606060"  # Mid-grey border
@@ -440,47 +522,48 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'ui') and hasattr(self.ui, 'playButton'): 
             self.ui.playButton.setStyleSheet(f"QPushButton {{ color: rgba(0, 0, 0, 150); {common_toolbar_button_style} }} QPushButton:hover {{ background-color: rgba(0,0,0,0.1); }} QPushButton:pressed {{ background-color: rgba(0,0,0,0.2); }}")
             
-            
-        self.ui.tableWidget.setStyleSheet("""
-            QTableWidget {
-                border: none;
-                background-color: transparent;
-                gridline-color: transparent;
-                color: palette(text);
-            }
-            QTableWidget::item { 
-                padding: 8px;
-                min-height: 30px;
-            }
-            QTableWidget::item:first-column {
-                border-right: 1px solid rgba(120, 120, 120, 60);
-            }
-            QTableWidget::item:selected {
-                background-color: palette(highlight);
-                color: palette(highlighted-text);
-            }
-        """)
+        if hasattr(self.ui, 'tableWidget'):
+            self.ui.tableWidget.setStyleSheet("""
+                QTableWidget {
+                    border: none;
+                    background-color: transparent;
+                    gridline-color: transparent;
+                    color: #303030;
+                }
+                QTableWidget::item { 
+                    padding: 8px;
+                    min-height: 30px;
+                    color: #303030;
+                }
+                QTableWidget::item:first-column {
+                    border-right: 1px solid rgba(120, 120, 120, 60);
+                }
+                QTableWidget::item:selected {
+                    background-color: #E0E0E0;
+                    color: #000000;
+                }
+            """)
         
-        self.ui.tableWidget.horizontalHeader().setStyleSheet("""
-            QHeaderView::section {
-                background-color: palette(button); /* Adapts to QSS */
-                color: palette(text); /* Adapts to QSS */
-                padding: 8px;
-                border: none;
-                border-right: 1px solid rgba(120, 120, 120, 60); /* Might need adjustment based on QSS */
-                border-bottom: none;
-            }
-        """)
+            self.ui.tableWidget.horizontalHeader().setStyleSheet("""
+                QHeaderView::section {
+                    background-color: #F0F0F0;
+                    color: #303030;
+                    padding: 8px;
+                    border: none;
+                    border-right: 1px solid #A0A0A0;
+                    border-bottom: none;
+                }
+            """)
 
-        # Style for QTreeWidget headers (same as dark for now, relies on palette)
+        # Style for QTreeWidget headers
         tree_header_style = """
             QHeaderView::section {
-                background-color: palette(button);
-                color: palette(text);
+                background-color: #F0F0F0;
+                color: #303030;
                 padding: 2px;
                 border: none;
-                border-bottom: 1px solid palette(midlight);
-                border-right: 1px solid palette(midlight);
+                border-bottom: 1px solid #A0A0A0;
+                border-right: 1px solid #A0A0A0;
             }
             QHeaderView::section:first {
                 border-left: none;
@@ -488,20 +571,49 @@ class MainWindow(QMainWindow):
         """
         if hasattr(self.ui, 'treeWidget') and self.ui.treeWidget:
             self.ui.treeWidget.header().setStyleSheet(tree_header_style)
+            self.ui.treeWidget.setStyleSheet("""
+                QTreeWidget {
+                    background-color: transparent;
+                    color: #303030;
+                }
+                QTreeWidget::item {
+                    color: #303030;
+                }
+                QTreeWidget::item:selected {
+                    background-color: #E0E0E0;
+                    color: #000000;
+                }
+            """)
+            
         if hasattr(self.ui, 'statesTreeWidget') and self.ui.statesTreeWidget:
             self.ui.statesTreeWidget.header().setStyleSheet(tree_header_style)
+            self.ui.statesTreeWidget.setStyleSheet("""
+                QTreeWidget {
+                    background-color: transparent;
+                    color: #303030;
+                }
+                QTreeWidget::item {
+                    color: #303030;
+                }
+                QTreeWidget::item:selected {
+                    background-color: #E0E0E0;
+                    color: #000000;
+                }
+            """)
 
         self.updateButtonIcons() 
-        self.updateCategoryHeaders() 
-        self.ui.retranslateUi(self)
+        self.updateCategoryHeaders()
+        
+        if hasattr(self.ui, 'retranslateUi'):
+            self.ui.retranslateUi(self)
 
         # Explicitly style problematic UI elements for light mode
-        light_border_color = "#A0A0A0"  # Mid-light grey border
+        light_border_color = "#A0A0A0"
         light_button_bg_color = "#F0F0F0"
         light_button_hover_bg_color = "#E0E0E0"
         light_button_pressed_bg_color = "#D0D0D0"
         light_button_text_color = "#303030" # Dark grey text for buttons
-        light_general_text_color = "#505050" # Softer dark grey for general labels
+        light_general_text_color = "#505050"
 
         button_style_light = (
             f"QPushButton {{ "
@@ -514,25 +626,24 @@ class MainWindow(QMainWindow):
             f"QPushButton:hover {{ background-color: {light_button_hover_bg_color}; }} "
             f"QPushButton:pressed {{ background-color: {light_button_pressed_bg_color}; }}"
         )
-        if hasattr(self.ui, 'openFile'): self.ui.openFile.setStyleSheet(button_style_light);
-        if hasattr(self.ui, 'exportButton'): self.ui.exportButton.setStyleSheet(button_style_light);
-
+        if hasattr(self.ui, 'openFile'): self.ui.openFile.setStyleSheet(button_style_light)
+        if hasattr(self.ui, 'exportButton'): self.ui.exportButton.setStyleSheet(button_style_light)
+        
         if hasattr(self.ui, 'filename'):
             font_style_filename = "italic" if self.ui.filename.text() == "No File Open" else "normal"
-            text_color_filename_light = "#666666" if font_style_filename == "italic" else light_button_text_color # Keep specific color for "No File Open"
             filename_style_light = (
                 f"font-style: {font_style_filename}; "
-                f"color: {text_color_filename_light}; "
+                f"color: {light_button_text_color}; "
                 f"border: 1.5px solid {light_border_color}; "
                 f"border-radius: 8px; "
                 f"padding: 5px 10px;"
             )
             self.ui.filename.setStyleSheet(filename_style_light)
 
-        if hasattr(self.ui, 'layersLabel'): self.ui.layersLabel.setStyleSheet(f"color: {light_general_text_color};");
-        if hasattr(self.ui, 'statesLabel'): self.ui.statesLabel.setStyleSheet(f"color: {light_general_text_color};");
-        if hasattr(self.ui, 'inspectorLabel'): self.ui.inspectorLabel.setStyleSheet(f"color: {light_general_text_color};");
-        if hasattr(self.ui, 'previewLabel'): self.ui.previewLabel.setStyleSheet(f"color: {light_general_text_color};");
+        if hasattr(self.ui, 'layersLabel'): self.ui.layersLabel.setStyleSheet(f"color: {light_general_text_color};")
+        if hasattr(self.ui, 'statesLabel'): self.ui.statesLabel.setStyleSheet(f"color: {light_general_text_color};")
+        if hasattr(self.ui, 'inspectorLabel'): self.ui.inspectorLabel.setStyleSheet(f"color: {light_general_text_color};")
+        if hasattr(self.ui, 'previewLabel'): self.ui.previewLabel.setStyleSheet(f"color: {light_general_text_color};")
 
     def addlayer(self, **kwargs):
         if not hasattr(self, 'cafilepath') or not self.cafilepath:
@@ -738,20 +849,39 @@ class MainWindow(QMainWindow):
     def openFile(self):
         self.ui.treeWidget.clear()
         self.ui.statesTreeWidget.clear()
+        
+        # Use consistent file dialog with support for both .ca and .tendies files
+        file_filter = "Core Animation Files (*.ca);;Tendies Files (*.tendies);;All Files (*)"
+        
         if sys.platform == "darwin":
             self.cafilepath = QFileDialog.getOpenFileName(
-                self, "Select File", "", "Core Animation Files (*.ca)")[0]
+                self, "Select File", "", file_filter)[0]
         else:
             self.cafilepath = QFileDialog.getOpenFileName(
-                self, "Select Folder", "")
+                self, "Select File", "", file_filter)[0]
         
-        if self.cafilepath:
+        if not self.cafilepath:
+            return
+            
+        # Handle different file types
+        if self.cafilepath.lower().endswith('.tendies'):
+            # Clear previous UI state
+            if hasattr(self, 'ca_file_selector') and self.ca_file_selector.isVisible():
+                self.ca_file_selector.hide()
+            
+            # Open tendies file
+            self.open_tendies_file(self.cafilepath)
+        else:
+            # Handle regular .ca file
             self.open_ca_file(self.cafilepath)
         
         self.updateFilenameDisplay()
 
     def open_ca_file(self, path):
         try:
+            if hasattr(self, 'ca_file_selector') and self.ca_file_selector.isVisible():
+                self.ca_file_selector.hide()
+                
             ca_file = CAFile(path)
             self.cafile = ca_file
             self.cafilepath = path
@@ -2340,7 +2470,16 @@ class MainWindow(QMainWindow):
 
                 temp_dir = tempfile.mkdtemp()
                 try:
-                    self._create_tendies_structure(temp_dir, self.cafilepath)
+                    has_multiple_ca_files = (hasattr(self, 'tendies_path') and 
+                                            hasattr(self, 'tendies_ca_files') and 
+                                            self.tendies_ca_files and 
+                                            len(self.tendies_ca_files) > 1)
+                    
+                    if has_multiple_ca_files:
+                        print(f"Exporting all {len(self.tendies_ca_files)} .ca files from tendies package")
+                        self._create_tendies_structure_with_multiple_ca(temp_dir, self.tendies_ca_files)
+                    else:
+                        self._create_tendies_structure(temp_dir, self.cafilepath)
 
                     shutil.make_archive(path[:-len('.tendies')], 'zip', root_dir=temp_dir)
                     
@@ -2354,7 +2493,18 @@ class MainWindow(QMainWindow):
             elif choice == 'nugget':
                 temp_dir = tempfile.mkdtemp()
                 try:
-                    self._create_tendies_structure(temp_dir, self.cafilepath)
+                    # Check if this is from a tendies package with multiple .ca files
+                    has_multiple_ca_files = (hasattr(self, 'tendies_path') and 
+                                            hasattr(self, 'tendies_ca_files') and 
+                                            self.tendies_ca_files and 
+                                            len(self.tendies_ca_files) > 1)
+                    
+                    if has_multiple_ca_files:
+                        print(f"Exporting all {len(self.tendies_ca_files)} .ca files to Nugget")
+                        self._create_tendies_structure_with_multiple_ca(temp_dir, self.tendies_ca_files)
+                    else:
+                        # Default behavior - just export the current .ca file
+                        self._create_tendies_structure(temp_dir, self.cafilepath)
 
                     export_dir = os.path.join(self.config_manager.config_dir, 'nugget-exports')
                     os.makedirs(export_dir, exist_ok=True)
@@ -2424,6 +2574,51 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             print(f"Error creating tendies structure in {base_dir}: {e}")
+            raise # Re-raise the exception to be caught by the caller
+            
+    def _create_tendies_structure_with_multiple_ca(self, base_dir, ca_files):
+        """
+        Creates the necessary directory structure for a .tendies bundle inside base_dir,
+        with support for multiple .ca files.
+        
+        Args:
+            base_dir: The base directory for the tendies structure
+            ca_files: List of tuples (display_name, full_path) for .ca files
+        """
+        try:
+            # Copy descriptors template
+            root = sys._MEIPASS if hasattr(sys, '_MEIPASS') else (os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd())
+            descriptors_src = os.path.join(root, "descriptors")
+            if not os.path.exists(descriptors_src):
+                raise FileNotFoundError("descriptors template directory not found")
+                
+            descriptors_dest = os.path.join(base_dir, "descriptors")
+            shutil.copytree(descriptors_src, descriptors_dest, dirs_exist_ok=True)
+
+            # Find the EID directory (assuming only one)
+            eid = next((d for d in os.listdir(descriptors_dest) if os.path.isdir(os.path.join(descriptors_dest, d)) and not d.startswith('.')), None)
+            if not eid:
+                raise FileNotFoundError("Could not find EID directory within descriptors template")
+
+            # Define the path for the .wallpaper bundle
+            contents_dir = os.path.join(descriptors_dest, eid, "versions", "0", "contents")
+            wallpaper_dir = os.path.join(contents_dir, "OpenPoster.wallpaper")
+            os.makedirs(wallpaper_dir, exist_ok=True)
+
+            # Copy all .ca bundles into the .wallpaper directory
+            for _, ca_source_path in ca_files:
+                if not os.path.exists(ca_source_path):
+                    print(f"Warning: .ca source path does not exist: {ca_source_path}, skipping")
+                    continue
+                    
+                ca_basename = os.path.basename(ca_source_path)
+                ca_dest_dir = os.path.join(wallpaper_dir, ca_basename)
+                
+                print(f"Copying .ca file from {ca_source_path} to {ca_dest_dir}")
+                shutil.copytree(ca_source_path, ca_dest_dir)
+                
+        except Exception as e:
+            print(f"Error creating tendies structure with multiple .ca files in {base_dir}: {e}")
             raise # Re-raise the exception to be caught by the caller
 
     def markDirty(self):
@@ -2575,9 +2770,6 @@ class MainWindow(QMainWindow):
         os.makedirs(export_dir, exist_ok=True)
 
     def open_project(self, path):
-        """
-        Open a .ca project from the given path (used for macOS file association).
-        """
         if not path or not os.path.exists(path):
             QMessageBox.warning(self, "Open Error", f"The file or folder does not exist: {path}")
             return
@@ -2628,3 +2820,212 @@ class MainWindow(QMainWindow):
         process.finished.connect(self._on_nugget_finished)
         process.errorOccurred.connect(lambda error: QMessageBox.critical(self, "Nugget Error", f"Nugget execution error: {error}"))
         process.start()
+
+    def open_tendies_file(self, path):
+
+        if not path or not os.path.exists(path):
+            QMessageBox.warning(self, "Open Error", f"The file does not exist: {path}")
+            return False
+            
+        try:
+            print(f"Opening tendies file: {path}")
+
+            temp_dir = os.path.join(self.config_manager.config_dir, 'tendies-extract')
+            if os.path.exists(temp_dir):
+                print(f"Cleaning up existing extract directory: {temp_dir}")
+                shutil.rmtree(temp_dir)
+            
+            print(f"Creating extract directory: {temp_dir}")
+            os.makedirs(temp_dir, exist_ok=True)
+
+            print("Extracting tendies file (zip archive)...")
+            import zipfile
+            try:
+                with zipfile.ZipFile(path, 'r') as zip_ref:
+                    zip_ref.extractall(temp_dir)
+                print("Extraction complete")
+            except zipfile.BadZipFile:
+                QMessageBox.critical(self, "Open Error", f"The file is not a valid .tendies package (bad zip file): {path}")
+                return False
+
+            print("Searching for .ca files in the tendies package...")
+            ca_files = self.find_ca_files_in_tendies(temp_dir)
+            
+            if not ca_files:
+                QMessageBox.warning(self, "Open Error", "No valid .ca files found in the tendies package. Make sure the tendies file contains .ca directories with index.xml files.")
+                return False
+
+            self.tendies_path = path
+            self.tendies_temp_dir = temp_dir
+            self.tendies_ca_files = ca_files
+            
+            print(f"Found {len(ca_files)} .ca files in the tendies package")
+
+            if len(ca_files) == 1:
+                print(f"Opening the only .ca file: {ca_files[0][0]}")
+                self.open_project(ca_files[0][1])
+                return True
+
+            if not hasattr(self, 'ca_file_selector'):
+                print("Setting up .ca file selector for multiple files")
+                self.setup_ca_file_selector()
+
+            print("Updating .ca file selector with found files")
+            self.update_ca_file_selector(ca_files)
+
+            print(f"Opening the first .ca file by default: {ca_files[0][0]}")
+            self.open_project(ca_files[0][1])
+            
+            return True
+            
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"Error opening tendies file: {error_details}")
+            QMessageBox.critical(self, "Open Error", f"Failed to open .tendies file: {str(e)}")
+            return False
+    
+    def find_ca_files_in_tendies(self, tendies_dir):
+        """
+        Find all .ca directories in the extracted tendies package
+        Returns a list of tuples (display_name, full_path)
+        """
+        ca_files = []
+        
+        def should_skip(path):
+            skip_patterns = ['__MACOSX', '.DS_Store', '._']
+            return any(pattern in path for pattern in skip_patterns)
+
+        print(f"Searching for .ca directories in {tendies_dir}")
+        
+        for root, dirs, files in os.walk(tendies_dir):
+            if should_skip(root):
+                continue
+
+            for dir_name in list(dirs):
+                if should_skip(dir_name):
+                    continue
+                    
+                if dir_name.endswith('.ca'):
+                    full_path = os.path.join(root, dir_name)
+
+                    index_path = os.path.join(full_path, 'index.xml')
+                    if os.path.isfile(index_path):
+                        display_name = dir_name
+                        print(f"Found valid .ca directory: {full_path}")
+                        ca_files.append((display_name, full_path))
+                    else:
+                        print(f"Skipping invalid .ca directory (missing index.xml): {full_path}")
+
+        if not ca_files:
+            print("Searching for .wallpaper directories...")
+            for root, dirs, files in os.walk(tendies_dir):
+                if should_skip(root):
+                    continue
+
+                if root.endswith('.wallpaper') or any(d.endswith('.wallpaper') for d in dirs):
+                    wallpaper_dir = root if root.endswith('.wallpaper') else None
+
+                    if not wallpaper_dir:
+                        for d in dirs:
+                            if d.endswith('.wallpaper'):
+                                wallpaper_dir = os.path.join(root, d)
+                                break
+                    
+                    if wallpaper_dir and os.path.isdir(wallpaper_dir):
+                        print(f"Found wallpaper directory: {wallpaper_dir}")
+                        for item in os.listdir(wallpaper_dir):
+                            if should_skip(item):
+                                continue
+                                
+                            if item.endswith('.ca'):
+                                full_path = os.path.join(wallpaper_dir, item)
+                                if os.path.isdir(full_path):
+                                    index_path = os.path.join(full_path, 'index.xml')
+                                    if os.path.isfile(index_path):
+                                        display_name = item
+                                        print(f"Found valid .ca directory in wallpaper: {full_path}")
+                                        ca_files.append((display_name, full_path))
+                                    else:
+                                        print(f"Skipping invalid .ca directory (missing index.xml): {full_path}")
+        
+        print(f"Found {len(ca_files)} .ca files in tendies package")
+        return ca_files
+    
+    def setup_ca_file_selector(self):
+        """Create the dropdown for .ca file selection"""
+        from PySide6.QtWidgets import QComboBox
+
+        self.ca_file_selector = QComboBox(self.ui.headerWidget)
+        self.ca_file_selector.setObjectName("caFileSelector")
+        self.ca_file_selector.setMinimumWidth(200)
+        self.ca_file_selector.setMaximumWidth(300)
+        self.ca_file_selector.setStyleSheet("""
+            QComboBox {
+                border: 1.5px solid palette(highlight);
+                border-radius: 8px;
+                padding: 3px 8px;
+                min-height: 28px;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: center right;
+                width: 20px;
+                border-left: 1px solid palette(mid);
+                border-top-right-radius: 8px;
+                border-bottom-right-radius: 8px;
+            }
+            QComboBox::down-arrow {
+                width: 12px;
+                height: 12px;
+            }
+        """)
+        
+        self.ca_file_selector.hide()
+        
+        self.ui.horizontalLayout_header.insertWidget(
+            self.ui.horizontalLayout_header.indexOf(self.ui.filename) + 1, 
+            self.ca_file_selector
+        )
+        
+        self.ca_file_selector.currentIndexChanged.connect(self.on_ca_file_selected)
+    
+    def update_ca_file_selector(self, ca_files):
+        """Update the dropdown with available .ca files"""
+        if not hasattr(self, 'ca_file_selector'):
+            self.setup_ca_file_selector()
+
+        self.ca_file_selector.blockSignals(True)
+        self.ca_file_selector.clear()
+        
+        for display_name, path in ca_files:
+            self.ca_file_selector.addItem(display_name, path)
+            
+        self.ca_file_selector.blockSignals(False)
+        self.ca_file_selector.show()
+    
+    def on_ca_file_selected(self, index):
+        if index < 0 or not hasattr(self, 'tendies_ca_files'):
+            return
+
+        ca_path = self.ca_file_selector.itemData(index)
+        if ca_path and os.path.exists(ca_path):
+            if hasattr(self, 'isDirty') and self.isDirty:
+                reply = QMessageBox.question(
+                    self, 
+                    "Save Changes", 
+                    "Do you want to save changes to the current file before switching?",
+                    QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel
+                )
+                
+                if reply == QMessageBox.Save:
+                    self.saveFile()
+                elif reply == QMessageBox.Cancel:
+                    for i in range(self.ca_file_selector.count()):
+                        if self.ca_file_selector.itemData(i) == self.cafilepath:
+                            self.ca_file_selector.blockSignals(True)
+                            self.ca_file_selector.setCurrentIndex(i)
+                            self.ca_file_selector.blockSignals(False)
+                            return
+
+            self.open_project(ca_path)

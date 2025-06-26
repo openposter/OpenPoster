@@ -25,7 +25,8 @@ class ConfigManager:
                     "remember_size": True
                 },
                 "langu": "en_US",
-                "filename_display_mode": "Toggle"
+                "filename_display_mode": "Toggle",
+                "theme": "system"
             },
             "shortcuts": {
                 "export": "Ctrl+E",
@@ -220,4 +221,13 @@ class ConfigManager:
         if "ui" not in self.config:
             self.config["ui"] = {}
         self.config["ui"]["filename_display_mode"] = value
+        self.save_config()
+
+    def get_theme(self) -> str:
+        return self.config.get("ui", {}).get("theme", "system")
+
+    def set_theme(self, theme: str) -> None:
+        if "ui" not in self.config:
+            self.config["ui"] = {}
+        self.config["ui"]["theme"] = theme
         self.save_config()

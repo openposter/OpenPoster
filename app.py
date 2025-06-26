@@ -44,11 +44,19 @@ if __name__ == "__main__":
     app.setWindowIcon(app_icon)
     # ─────────────────────────────────────────────────────
 
-    # ─── Global QSS theme ───────────────────────────────
-    palette = app.palette()
-    text_color = palette.color(QtGui.QPalette.Active, QtGui.QPalette.WindowText)
-    is_dark = text_color.lightness() > 128
-    qss_file = "themes/dark_style.qss" if is_dark else "themes/light_style.qss"
+    # ─── Apply Global QSS theme ───────────────────────────────
+    theme = config.get_theme()
+    
+    if theme == "dark":
+        qss_file = "themes/dark_style.qss"
+    elif theme == "light":
+        qss_file = "themes/light_style.qss"
+    else:
+        palette = app.palette()
+        text_color = palette.color(QtGui.QPalette.Active, QtGui.QPalette.WindowText)
+        is_dark = text_color.lightness() > 128
+        qss_file = "themes/dark_style.qss" if is_dark else "themes/light_style.qss"
+    
     qss_path = os.path.join(os.path.dirname(__file__), qss_file)
     if os.path.exists(qss_path):
         try:
@@ -117,14 +125,25 @@ if __name__ == "__main__":
 
     # ─── Handle .ca file argument ─────────────────────
     ca_file = None
+    tendies_file = None
+    
     for arg in sys.argv[1:]:
         if arg.endswith('.ca') and os.path.exists(arg):
             ca_file = arg
             break
+        elif arg.endswith('.tendies') and os.path.exists(arg):
+            tendies_file = arg
+            break
+            
     if ca_file:
         widget.open_project(ca_file)
+    elif tendies_file:
+        widget.open_tendies_file(tendies_file)
     elif app.file_to_open:
-        widget.open_project(app.file_to_open)
+        if app.file_to_open.endswith('.tendies'):
+            widget.open_tendies_file(app.file_to_open)
+        else:
+            widget.open_project(app.file_to_open)
     # ───────────────────────────────────────────────────
 
     sys.exit(app.exec())

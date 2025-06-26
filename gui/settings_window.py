@@ -29,6 +29,18 @@ class SettingsDialog(QDialog):
         self.filename_display_layout.addWidget(self.ui.filenameDisplayCombo)
         self.ui.uiTab.layout().addLayout(self.filename_display_layout)
 
+        self.theme_layout = QHBoxLayout()
+        self.theme_label = QLabel("Theme:")
+        self.ui.themeCombo = QComboBox()
+        self.ui.themeCombo.addItems(["System", "Light", "Dark"])
+        self.theme_layout.addWidget(self.theme_label)
+        self.theme_layout.addWidget(self.ui.themeCombo)
+        self.ui.uiTab.layout().addLayout(self.theme_layout)
+
+        current_theme = self.config_manager.get_theme().title()  # Capitalize first letter
+        self.ui.themeCombo.setCurrentText(current_theme)
+        self.ui.themeCombo.currentTextChanged.connect(self.on_theme_changed)
+
         current_filename_display = self.config_manager.get_filename_display_mode()
         self.ui.filenameDisplayCombo.setCurrentText(current_filename_display)
         self.ui.filenameDisplayCombo.currentTextChanged.connect(self.on_filename_display_changed)
@@ -89,10 +101,24 @@ class SettingsDialog(QDialog):
         if hasattr(self.ui, 'discordButton'):
             self.ui.discordButton.setIcon(QIcon(discord_icon_path))
 
-    def on_theme_changed(self, is_dark_mode):
-        discord_icon_path = ":/icons/discord-white.svg" if is_dark_mode else ":/icons/discord.svg"
-        if hasattr(self.ui, 'discordButton'):
-            self.ui.discordButton.setIcon(QIcon(discord_icon_path))
+    def on_theme_changed(self, new_theme):
+        if isinstance(new_theme, str):
+            self.config_manager.set_theme(new_theme.lower())
+            if hasattr(self.parent_window, 'apply_theme_from_settings'):
+                self.parent_window.apply_theme_from_settings()
+        else:
+            self.set_discord_icon_dark(new_theme)
+            
+            if self.parent_window:
+                qss_file = "themes/dark_style.qss" if new_theme else "themes/light_style.qss"
+                if hasattr(self.parent_window, 'findAssetPath'):
+                    qss_path = self.parent_window.findAssetPath(qss_file)
+                    if qss_path and os.path.exists(qss_path):
+                        try:
+                            with open(qss_path, "r") as f:
+                                self.setStyleSheet(f.read())
+                        except Exception as e:
+                            print(f"Error applying QSS to settings dialog: {e}")
 
     def done(self, result):
         if hasattr(self.parent_window, 'theme_change_callbacks') and self.on_theme_changed in self.parent_window.theme_change_callbacks:
