@@ -130,7 +130,7 @@ if __name__ == "__main__":
             break
     if ca_file:
         widget.open_project(ca_file)
-    elif app.file_to_open and os.path.isdir(app.file_to_open) and app.file_to_open.endswith('.ca'):
+    elif app.file_to_open:
         widget.open_project(app.file_to_open)
     # ───────────────────────────────────────────────────
 

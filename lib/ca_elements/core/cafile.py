@@ -54,21 +54,7 @@ class CAFile:
         # Build XML tree and sanitize None attribute values to avoid serialization errors
         tree = self.create()
         for elem in tree.iter():
-            if elem.attrib:
-                for key, val in list(elem.attrib.items()):
-                    if val is None:
-                        elem.attrib.pop(key)
-        tree.write(os.path.join(capath, self.index['rootDocument']))
-
-    def from_xml(self, elem):
-        # Set attributes of the object from XML attributes
-        if elem.attrib:
             for key, val in list(elem.attrib.items()):
-                # Convert snake_case to lowerCamelCase
-                parts = key.split('_')
-                camel_key = parts[0] + ''.join(p.capitalize() for p in parts[1:])
-                setattr(self, camel_key, val)
-        
-        # Recursively process child elements
-        for child in elem:
-            self.from_xml(child)
+                if val is None:
+                    elem.attrib.pop(key)
+        tree.write(os.path.join(capath, self.index['rootDocument']))
