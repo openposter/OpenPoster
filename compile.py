@@ -6,7 +6,7 @@ import subprocess
 
 args = [
     'app.py',
-    '--onedir',
+    '--onefile',
     # '--noconfirm',
     '--name=OpenPoster',
     '--optimize=2',
