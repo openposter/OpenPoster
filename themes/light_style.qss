@@ -171,6 +171,7 @@ QComboBox QAbstractItemView {
 }
 
 #addButton::menu-indicator {
+    width: 0px;
     image: none;
 }
 

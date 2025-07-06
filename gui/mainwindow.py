@@ -668,6 +668,7 @@ class MainWindow(QMainWindow):
         self.ui.exportButton.clicked.connect(self.exportFile)
 
         self.ui.addButton.setIcon(self.addIconWhite if self.isDarkMode else self.addIcon)
+        self.ui.addButton.setStyleSheet("QPushButton::menu-indicator { width: 0px; image: none; }")
 
         # i know we said we would make ui in QDesigner but i cant figure out how to do this sooo - retron
         self.add_menu_ui = QMenu(self)
