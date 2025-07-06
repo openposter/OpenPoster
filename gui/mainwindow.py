@@ -784,10 +784,11 @@ class MainWindow(QMainWindow):
         self.ui.statesTreeWidget.clear()
         if sys.platform == "darwin":
             self.cafilepath = QFileDialog.getOpenFileName(
-                self, "Select File", "", "Core Animation Files (*.ca)")[0]
+                self, "Select .ca File", "", "Core Animation Files (*.ca)")[0]
         else:
-            self.cafilepath = QFileDialog.getOpenFileName(
-                self, "Select Folder", "")
+            self.cafilepath = QFileDialog.getExistingDirectory(
+                self, "Select .ca File", "", QFileDialog.ShowDirsOnly
+            )
         
         if self.cafilepath:
             self.open_ca_file(self.cafilepath)
