@@ -94,8 +94,9 @@ class MainWindow(QMainWindow):
         self.applyTransitionAnimationToPreview = self._applyAnimation.applyTransitionAnimationToPreview
         self.applySpringAnimationToItem = self._applyAnimation.applySpringAnimationToItem
 
-        self.findAssetPath = lambda src_path: Assets.findAssetPath(self, src_path)
-        self.loadImage = lambda src_path: Assets.loadImage(self, src_path)
+        self._assets = Assets()
+        self.findAssetPath = self._assets.findAssetPath
+        self.loadImage = self._assets.loadImage
 
     def loadIconResources(self):
         self.editIcon = QIcon(":/icons/edit.svg")
@@ -617,6 +618,31 @@ class MainWindow(QMainWindow):
         if hasattr(self.ui, 'inspectorLabel'): self.ui.inspectorLabel.setStyleSheet(f"color: {light_general_text_color};");
         if hasattr(self.ui, 'previewLabel'): self.ui.previewLabel.setStyleSheet(f"color: {light_general_text_color};");
 
+    def _get_all_layer_names(self, layer):
+        names = set()
+        if hasattr(layer, 'name') and layer.name:
+            names.add(layer.name)
+        if hasattr(layer, 'sublayers'):
+            for sublayer in layer.sublayers.values():
+                names.update(self._get_all_layer_names(sublayer))
+        return names
+
+    def _generate_unique_layer_name(self, base_name):
+        if not hasattr(self, 'cafile') or not self.cafile:
+            return base_name
+
+        all_names = self._get_all_layer_names(self.cafile.rootlayer)
+        
+        if base_name not in all_names:
+            return base_name
+        
+        counter = 2
+        while True:
+            new_name = f"{base_name} {counter}"
+            if new_name not in all_names:
+                return new_name
+            counter += 1
+
     def addlayer(self, **kwargs):
         if not hasattr(self, 'cafilepath') or not self.cafilepath:
             self.create_themed_message_box(
@@ -626,8 +652,37 @@ class MainWindow(QMainWindow):
             ).exec()
             return
 
+        base_name = kwargs.get("name", "New Layer")
+        unique_name = self._generate_unique_layer_name(base_name)
+        kwargs['name'] = unique_name
+        kwargs['id'] = unique_name
+
         layer = CALayer(**kwargs)
         layer_type = kwargs.get("type")
+
+        root_layer = self.cafile.rootlayer
+        if root_layer and hasattr(root_layer, 'bounds') and len(root_layer.bounds) == 4:
+            try:
+                root_bounds = [float(b) for b in root_layer.bounds]
+                root_width = root_bounds[2]
+                root_height = root_bounds[3]
+
+                new_height = root_height * 0.3
+                
+                if root_height > 0:
+                    aspect_ratio = root_width / root_height
+                    new_width = new_height * aspect_ratio
+                else:
+                    new_width = root_width * 0.3
+
+                center_x = root_width / 2
+                center_y = root_height / 2
+
+                layer.bounds = ['0', '0', str(new_width), str(new_height)]
+                layer.position = [str(center_x), str(center_y)]
+            except (ValueError, IndexError) as e:
+                print(f"Warning: Could not get root layer bounds to resize new layer: {e}")
+                pass
 
         if layer_type == "text":
             text, ok = QInputDialog.getText(self, "New Text Layer", "Enter text:", QLineEdit.Normal, getattr(layer, "string", ""))
@@ -638,6 +693,23 @@ class MainWindow(QMainWindow):
             image_path, _ = QFileDialog.getOpenFileName(self, "Select Image File", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)")
             if not image_path:
                 return
+            
+            try:
+                image = QImage(image_path)
+                if not image.isNull():
+                    img_width = image.width()
+                    img_height = image.height()
+                    
+                    if img_height > 0:
+                        current_height = float(layer.bounds[3])
+                        
+                        aspect_ratio = img_width / img_height
+                        new_width = current_height * aspect_ratio
+                        
+                        layer.bounds[2] = str(new_width)
+            except Exception as e:
+                print(f"Could not resize image based on aspect ratio: {e}")
+
             layer.content.src = image_path
 
         if hasattr(self, "currentInspectObject"):
@@ -711,8 +783,8 @@ class MainWindow(QMainWindow):
         def makeItemEditable(item):
             editable = orig_make_item(item)
             if editable:
-                editable.itemChanged.connect(lambda it, item=item: self.onItemMoved(item))
-                editable.transformChanged.connect(lambda tr, item=item: self.onTransformChanged(item, tr))
+                editable.itemChanged.connect(self.onItemMoved)
+                editable.editFinished.connect(self.onTransformChanged)
             return editable
         self.scene.makeItemEditable = makeItemEditable
         self.ui.graphicsView.setScene(self.scene)
@@ -1590,10 +1662,10 @@ class MainWindow(QMainWindow):
             if hasattr(layer, "content") and hasattr(layer.content, "src"):
                 src_path = layer.content.src
                 # umm...
-                self._Assets.cafilepath = self.cafilepath
-                self._Assets.cachedImages = self.cachedImages
+                self._assets.cafilepath = self.cafilepath
+                self._assets.cachedImages = self.cachedImages
                 pixmap = self.loadImage(src_path)
-                self.cachedImages = self._Assets.cachedImages
+                self.cachedImages = self._assets.cachedImages
                 
                 if not pixmap and hasattr(self, 'missing_assets') and src_path in self.missing_assets:
                     missing_asset = True
@@ -1666,14 +1738,6 @@ class MainWindow(QMainWindow):
             
             self.applyDefaultAnimationsToLayer(layer, rect_item)
             
-            if layer.id != self.cafile.rootlayer.id:
-                name_item = QGraphicsTextItem(layer.name)
-                name_item.setPos(rect_item.pos() + QPointF(5, 5))
-                name_item.setDefaultTextColor(QColor(60, 60, 60))
-                name_item.setData(0, layer.id + "_name")
-                name_item.setTransform(transform)
-                name_item.setZValue(z_position + 0.1)
-                self.scene.addItem(name_item)
         
         if hasattr(layer, "_sublayerorder") and layer._sublayerorder:
             for layer_id in layer._sublayerorder:
@@ -2466,16 +2530,29 @@ class MainWindow(QMainWindow):
 
     def onItemMoved(self, item):
         layer_id = item.data(0)
+        if not layer_id: return
         layer = self.cafile.rootlayer.findlayer(layer_id)
         if layer:
             pos = item.pos()
-            layer.position = [str(pos.x()), str(pos.y())]
-            scene_rect = item.mapToScene(item.boundingRect()).boundingRect()
+            
+            scene_rect = item.sceneBoundingRect()
             w = scene_rect.width()
             h = scene_rect.height()
-            x0, y0 = layer.bounds[0], layer.bounds[1]
-            layer.bounds = [x0, y0, str(w), str(h)]
-        
+            
+            x0, y0 = (float(b) for b in layer.bounds[:2])
+            
+            layer.bounds = [str(x0), str(y0), str(w), str(h)]
+
+            layer.position = [str(pos.x()), str(pos.y())]
+
+            m11 = item.transform().m11()
+            m12 = item.transform().m12()
+            m21 = item.transform().m21()
+            m22 = item.transform().m22()
+            dx = item.transform().dx()
+            dy = item.transform().dy()
+            layer.transform = f"{m11} {m12} {m21} {m22} {dx} {dy}"
+
         if hasattr(self, 'currentInspectObject') and self.currentInspectObject == layer:
             self.ui.tableWidget.blockSignals(True)
             for r in range(self.ui.tableWidget.rowCount()):
@@ -2487,30 +2564,12 @@ class MainWindow(QMainWindow):
                     self.ui.tableWidget.item(r, 1).setText(self.formatPoint(' '.join(layer.position)))
                 elif key == 'BOUNDS':
                     self.ui.tableWidget.item(r, 1).setText(self.formatPoint(' '.join(layer.bounds)))
+                elif key == 'TRANSFORM' and layer.transform:
+                    self.ui.tableWidget.item(r, 1).setText(self.formatPoint(layer.transform))
             self.ui.tableWidget.blockSignals(False)
         self.markDirty()
 
-    def onTransformChanged(self, item, transform):
-        layer_id = item.data(0)
-        layer = self.cafile.rootlayer.findlayer(layer_id)
-        if layer:
-            scene_rect = item.mapToScene(item.boundingRect()).boundingRect()
-            w = scene_rect.width()
-            h = scene_rect.height()
-            x0, y0 = layer.bounds[0], layer.bounds[1]
-            layer.bounds = [x0, y0, str(w), str(h)]
-            layer.transform = None
-        
-        if hasattr(self, 'currentInspectObject') and self.currentInspectObject == layer:
-            self.ui.tableWidget.blockSignals(True)
-            for r in range(self.ui.tableWidget.rowCount()):
-                label = self.ui.tableWidget.item(r, 0)
-                if label and label.text() == 'BOUNDS':
-                    self.ui.tableWidget.item(r, 1).setText(self.formatPoint(' '.join(layer.bounds)))
-                    break
-            self.ui.tableWidget.blockSignals(False)
-            self.renderPreview(self.cafile.rootlayer)
-            self.fitPreviewToView()
+    def onTransformChanged(self, item):
         self.markDirty()
 
     def onInspectorChanged(self, item):

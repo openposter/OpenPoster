@@ -27,6 +27,7 @@ class CALayer:
 
         if self.layer_class == "CALayer":
             self._content = None
+            self.sublayers = {}
             self._sublayerorder = []
             self.states = {}
             self.stateTransitions = []
