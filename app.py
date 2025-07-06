@@ -9,46 +9,6 @@ from PySide6.QtGui import QFileOpenEvent
 from gui.welcome import WelcomeWindow
 from gui.newfile import NewFileDialog
 import os
-import platform
-
-def register_file_association():
-    if platform.system() != "Windows":
-        return
-        
-    try:
-        import winreg
-        import subprocess
-        from pathlib import Path
-        
-        executable = sys.executable
-        app_path = os.path.abspath(sys.argv[0])
-        
-        if executable.endswith("python.exe"):
-            executable = executable.replace("python.exe", "pythonw.exe")
-            
-        command = f'"{executable}" "{app_path}" "%1"'
-
-        file_ext = ".ca"
-        prog_id = "OpenPoster.CAFile"
-
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\{file_ext}") as key:
-            winreg.SetValue(key, "", winreg.REG_SZ, prog_id)
-
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\{prog_id}") as key:
-            winreg.SetValue(key, "", winreg.REG_SZ, "OpenPoster Project")
-
-            with winreg.CreateKey(key, "DefaultIcon") as icon_key:
-                icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "openposter.ico")
-                winreg.SetValue(icon_key, "", winreg.REG_SZ, icon_path)
-
-            with winreg.CreateKey(key, "shell\\open\\command") as command_key:
-                winreg.SetValue(command_key, "", winreg.REG_SZ, command)
-
-        subprocess.run(["assoc", f"{file_ext}={prog_id}"], shell=True)
-        
-    except Exception as e:
-        print(f"Error registering file association: {e}")
-
 
 class OpenPosterApplication(QtWidgets.QApplication):
     def __init__(self, *args, **kwargs):
@@ -67,13 +27,10 @@ class OpenPosterApplication(QtWidgets.QApplication):
         return super().event(event)
 
 if __name__ == "__main__":
-    # Try to register file association on Windows
-    register_file_association()
-    
     app = OpenPosterApplication([])
 
     # ─── Localization ───────────────────────────────────
-    config = ConfigManager()
+    config = ConfigManager()  
     translator = QTranslator()
     lang = config.get_current_language()
     translator.load(f"languages/app_{lang}.qm")
@@ -168,16 +125,9 @@ if __name__ == "__main__":
     # ─── Handle .ca file argument ─────────────────────
     ca_file = None
     for arg in sys.argv[1:]:
-        arg = arg.strip('"\'')
-        if arg.lower().endswith('.ca'):
-            if os.path.exists(arg):
-                ca_file = arg
-                break
-            rel_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), arg)
-            if os.path.exists(rel_path):
-                ca_file = rel_path
-                break
-    
+        if arg.endswith('.ca') and os.path.exists(arg):
+            ca_file = arg
+            break
     if ca_file:
         widget.open_project(ca_file)
     elif app.file_to_open:
