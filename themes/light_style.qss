@@ -202,4 +202,91 @@ QTabBar::tab:selected {
 
 QTabBar::tab:hover:!selected {
     background-color: #E0E0E0;
+}
+
+/* Export Options Dialog */
+QDialog#ExportOptionsDialog {
+    background-color: #FFFFFF;
+    color: #303030;
+}
+
+QDialog#ExportOptionsDialog QLabel {
+    color: #303030;
+}
+
+QDialog#ExportOptionsDialog QToolButton {
+    background-color: #F0F0F0;
+    color: #303030;
+    border: 1px solid #A0A0A0;
+    border-radius: 8px;
+}
+
+QDialog#ExportOptionsDialog QToolButton:hover {
+    background-color: #E0E0E0;
+    border: 2px solid #606060;
+}
+
+QDialog#ExportOptionsDialog QToolButton:focus {
+    border: 2px solid #606060;
+}
+
+/* Message Boxes and Popups */
+QMessageBox {
+    background-color: #FFFFFF;
+    color: #303030;
+}
+
+QMessageBox QLabel {
+    color: #303030;
+}
+
+QMessageBox QPushButton {
+    min-width: 80px;
+}
+
+/* File Dialog */
+QFileDialog {
+    background-color: #FFFFFF;
+    color: #303030;
+}
+
+QFileDialog QLabel {
+    color: #303030;
+}
+
+QFileDialog QToolButton {
+    background-color: #F0F0F0;
+    color: #303030;
+    border: 1px solid #A0A0A0;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+QFileDialog QToolButton:hover {
+    background-color: #E0E0E0;
+}
+
+QFileDialog QComboBox {
+    min-width: 120px;
+}
+
+QFileDialog QListView, QFileDialog QTreeView {
+    background-color: #FFFFFF;
+    color: #303030;
+    border: 1px solid #A0A0A0;
+}
+
+QFileDialog QListView::item:selected, QFileDialog QTreeView::item:selected {
+    background-color: #E0E0E0;
+    color: #000000;
+}
+
+/* Input Dialog */
+QInputDialog {
+    background-color: #FFFFFF;
+    color: #303030;
+}
+
+QInputDialog QLabel {
+    color: #303030;
 } 

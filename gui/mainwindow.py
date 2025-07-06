@@ -299,6 +299,7 @@ class MainWindow(QMainWindow):
                 with open(qss_path, "r") as f:
                     qss_content = f.read()
                     self.ui.centralwidget.setStyleSheet(qss_content)
+                    self._current_qss = qss_content
                     
                     if hasattr(self.ui, 'tableWidget'):
                         self.ui.tableWidget.setObjectName("tableWidget")
@@ -460,6 +461,7 @@ class MainWindow(QMainWindow):
                 with open(qss_path, "r") as f:
                     qss_content = f.read()
                     self.ui.centralwidget.setStyleSheet(qss_content)
+                    self._current_qss = qss_content
                     
                     # Apply theme to all critical widgets directly
                     if hasattr(self.ui, 'tableWidget'):
@@ -617,7 +619,11 @@ class MainWindow(QMainWindow):
 
     def addlayer(self, **kwargs):
         if not hasattr(self, 'cafilepath') or not self.cafilepath:
-            QMessageBox.warning(self, "No File Open", "Please open or create a file before adding a layer.")
+            self.create_themed_message_box(
+                QMessageBox.Warning,
+                "No File Open", 
+                "Please open or create a file before adding a layer."
+            ).exec()
             return
 
         layer = CALayer(**kwargs)
@@ -799,7 +805,11 @@ class MainWindow(QMainWindow):
             self.ui.addButton.setEnabled(True)
             self.updateFilenameDisplay()
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Could not open file: {e}")
+            self.create_themed_message_box(
+                QMessageBox.Critical, 
+                "Error", 
+                f"Could not open file: {e}"
+            ).exec()
             self.markDirty()
 
     def populateLayersTreeWidget(self):
@@ -2255,12 +2265,14 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         if getattr(self, 'isDirty', False):
-            msg = QMessageBox(self)
-            msg.setWindowTitle("Unsaved Changes")
-            msg.setText("You have unsaved changes. Are you sure you want to discard them and exit?")
+            msg = self.create_themed_message_box(
+                QMessageBox.Question, 
+                "Unsaved Changes",
+                "You have unsaved changes. Are you sure you want to discard them and exit?",
+                QMessageBox.Yes | QMessageBox.No
+            )
             pix = QPixmap(":/assets/openposter.png")
             msg.setIconPixmap(pix.scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
             msg.setDefaultButton(QMessageBox.No)
             reply = msg.exec()
             if reply != QMessageBox.Yes:
@@ -2328,7 +2340,11 @@ class MainWindow(QMainWindow):
         webbrowser.open("https://discord.gg/t3abQJjHm6")
     def exportFile(self):
         if not hasattr(self, 'cafile') or not self.cafile:
-            QMessageBox.warning(self, "No File Open", "Please open a file before exporting.")
+            self.create_themed_message_box(
+                QMessageBox.Warning,
+                "No File Open", 
+                "Please open a file before exporting."
+            ).exec()
             return
 
         dialog = ExportOptionsDialog(self, self.config_manager) # Pass config_manager
@@ -2644,3 +2660,11 @@ class MainWindow(QMainWindow):
 
         process.errorOccurred.connect(lambda error: QMessageBox.critical(self, "Nugget Error", f"Nugget execution error: {error}"))
         process.start()
+
+    def create_themed_message_box(self, icon, title, text, buttons=QMessageBox.Ok, parent=None):
+        msg_box = QMessageBox(icon, title, text, buttons, parent or self)
+        
+        if hasattr(self, '_current_qss'):
+            msg_box.setStyleSheet(self._current_qss)
+            
+        return msg_box
