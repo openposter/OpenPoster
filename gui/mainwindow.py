@@ -649,6 +649,7 @@ class MainWindow(QMainWindow):
         self.ui.treeWidget.clear()
         self.populateLayersTreeWidget()
         self.renderPreview(self.cafile.rootlayer)
+        self.markDirty()
 
     # gui loader section
     def initUI(self):
@@ -820,7 +821,7 @@ class MainWindow(QMainWindow):
             if len(self.cafile.rootlayer._sublayerorder) > 0:
                 self.treeWidgetChildren(rootItem, self.cafile.rootlayer)
 
-        self.ui.addButton.setEnabled(self.isDirty)
+        self.ui.addButton.setEnabled(hasattr(self, 'cafile') and self.cafile is not None)
 
     def fitPreviewToView(self):
         if not hasattr(self, 'cafilepath') or not self.cafilepath:
