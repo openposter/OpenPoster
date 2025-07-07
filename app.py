@@ -27,7 +27,7 @@ class OpenPosterApplication(QtWidgets.QApplication):
         return super().event(event)
 
 if __name__ == "__main__":
-    app = OpenPosterApplication([])
+    app = OpenPosterApplication(sys.argv)
 
     # ─── Localization ───────────────────────────────────
     config = ConfigManager()  
@@ -130,7 +130,7 @@ if __name__ == "__main__":
             break
     if ca_file:
         widget.open_project(ca_file)
-    elif app.file_to_open:
+    elif app.file_to_open and app.file_to_open != sys.argv[0]:
         widget.open_project(app.file_to_open)
     # ───────────────────────────────────────────────────
 
