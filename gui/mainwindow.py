@@ -993,7 +993,7 @@ class MainWindow(QMainWindow):
                 scale_factor = value / 100.0
                 if hasattr(self, 'currentInspectObject') and self.currentInspectObject:
                     layer = self.currentInspectObject
-                    if hasattr(layer, 'bounds') and len(layer.bounds) >= 4:
+                    if hasattr(layer, 'bounds'):
                         try:
                             layer.scale_factor = scale_factor
                             
@@ -1005,27 +1005,21 @@ class MainWindow(QMainWindow):
                             
                             if is_text_layer:
                                 base_font_size = root_height * 0.05
-                                new_font_size = base_font_size * scale_factor * 2 
+                                new_font_size = base_font_size * scale_factor
                                 
                                 if hasattr(layer, "fontSize"):
                                     layer.fontSize = str(int(new_font_size))
                             else:
-                                target_width = root_width * (scale_factor)
-                                target_height = root_height * (scale_factor)
-
+                                target_height = root_height * scale_factor
+                                
                                 current_width = float(layer.bounds[2])
                                 current_height = float(layer.bounds[3])
                                 aspect_ratio = current_width / current_height if current_height > 0 else 1.0
 
-                                if aspect_ratio > 1:
-                                    new_width = target_width
-                                    new_height = target_width / aspect_ratio
-                                else:
-                                    new_height = target_height
-                                    new_width = target_height * aspect_ratio
+                                target_width = target_height * aspect_ratio
 
-                                layer.bounds[2] = str(new_width)
-                                layer.bounds[3] = str(new_height)
+                                layer.bounds[2] = str(target_width)
+                                layer.bounds[3] = str(target_height)
 
                             if not update_timer.isActive():
                                 update_timer.timeout.connect(lambda: self.renderPreview(self.cafile.rootlayer))
