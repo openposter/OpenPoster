@@ -72,8 +72,7 @@ class CALayer:
         self.backgroundColor = self.element.get('backgroundColor')
         self.cornerRadius = self.element.get('cornerRadius')
         
-        # Store the layer class type (CALayer, CATextLayer, etc.)
-        self.layer_class = self.element.get('class')
+        self.layer_class = self.element.tag.split('}')[-1] if '}' in self.element.tag else self.element.tag
         
         # Handle CATextLayer specific properties
         if self.layer_class == "CATextLayer":
@@ -88,18 +87,18 @@ class CALayer:
         if self._content is not None:
             if self._content.get('type') == "CGImage":
                 self.content = CGImage(self._content.get('src'))
-            # TODO: support more than just CGImage :skull:
 
         self.sublayers = {}
         self._sublayerorder = []
         self._sublayers = self.element.find(
             "{http://www.apple.com/CoreAnimation/1.0}sublayers")
         if self._sublayers is not None:
-            for layer in self._sublayers:
-                if layer.tag == "{http://www.apple.com/CoreAnimation/1.0}CALayer":
-                    self.sublayers[layer.get('id')] = CALayer().load(layer)
-                    self._sublayerorder.append(layer.get('id'))
-                # TODO: support more specialized layer types in the future
+            for layer_element in self._sublayers:
+                layer_class_name = layer_element.tag.split('}')[-1] if '}' in layer_element.tag else layer_element.tag
+                if layer_class_name:
+                    new_layer = CALayer().load(layer_element)
+                    self.sublayers[new_layer.id] = new_layer
+                    self._sublayerorder.append(new_layer.id)
 
         self.states = {}
         self._states = self.element.find(
@@ -156,7 +155,7 @@ class CALayer:
         return None
 
     def create(self):
-        e = ET.Element('CALayer')
+        e = ET.Element(self.layer_class if self.layer_class else 'CALayer')
         e.set('id', self.id)
         e.set('name', self.name)
         e.set('position', " ".join(self.position))
@@ -177,10 +176,6 @@ class CALayer:
             e.set('backgroundColor', self.backgroundColor)
         if self.cornerRadius is not None:
             e.set('cornerRadius', self.cornerRadius)
-        
-        # Set layer class type if it exists
-        if self.layer_class is not None:
-            e.set('class', self.layer_class)
             
         # Handle CATextLayer specific properties
         if self.layer_class == "CATextLayer":
