@@ -27,6 +27,7 @@ from ._assets import Assets
 from .config_manager import ConfigManager
 from .settings_window import SettingsDialog
 from .exportoptions_window import ExportOptionsDialog
+from .theme_manager import ThemeManager
 
 class MainWindow(QMainWindow):
     def __init__(self, config_manager, translator):
@@ -54,7 +55,8 @@ class MainWindow(QMainWindow):
         self.ui.setupUi(self)
         
         self.isMacOS = platform.system() == "Darwin"
-        self.loadThemeFromConfig()
+        self.theme_manager = ThemeManager(self.config_manager, self)
+        self.theme_manager.load_theme()
         
         self.initUI()
         
@@ -152,471 +154,15 @@ class MainWindow(QMainWindow):
         else:
             self.applyLightModeStyles()
         self.updateButtonIcons()
-        self.updateCategoryHeaders()
-
-    # themes section
-    def updateCategoryHeaders(self):
-        if not hasattr(self, 'ui') or not hasattr(self.ui, 'tableWidget'):
-            return
-            
-        if self.isDarkMode:
-            bg_color = QColor(60, 60, 60)
-            text_color = QColor(230, 230, 230)
-        else:
-            bg_color = QColor(220, 220, 220)
-            text_color = QColor(30, 30, 30)
-            
-        for row in range(self.ui.tableWidget.rowCount()):
-            item = self.ui.tableWidget.item(row, 0)
-            if item and self.ui.tableWidget.columnSpan(row, 0) > 1:
-                item.setBackground(bg_color)
-                item.setForeground(text_color)
-
-    def setupSystemAppearanceDetection(self):
-        try:
-            from Foundation import NSUserDefaults # type: ignore
-            self.macAppearanceObserver = NSUserDefaults.standardUserDefaults()
-            self.updateAppearanceForMac()
-            
-            self.app = QApplication.instance()
-            self.app.installEventFilter(self)
-        except ImportError:
-            print("Foundation module not available - dark mode detection limited")
-            self.detectDarkMode()
-    
-    def changeEvent(self, event: QtCore.QEvent):
-        if event.type() == QtCore.QEvent.LanguageChange:
-            # self.ui.retranslateUi(self)
-            self.retranslateUi()
-            self.updateCategoryHeaders()
-        super().changeEvent(event)
-    
-    def retranslateUi(self):
-        # super().retranslateUi(self);
-        self.ui.retranslateUi(self)
-        # :3
-        
-    def load_language(self, lang_code: str):
-        app = QApplication.instance()
-        if app is None:
-            print("Error: QApplication instance not found.")
-            return
-
-        if hasattr(app, 'translator') and app.translator is not None:
-            app.removeTranslator(app.translator)
-
-        if hasattr(sys, '_MEIPASS'):
-            base_path = sys._MEIPASS
-        else:
-            base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-        
-        qm_dir_path = os.path.join(base_path, "languages")
-
-        new_translator = QTranslator()
-        loaded = False
-        if new_translator.load(f"app_{lang_code}", qm_dir_path):
-            app.installTranslator(new_translator)
-            app.translator = new_translator
-            loaded = True
-            print(f"Successfully loaded and installed translation for: {lang_code}")
-        else:
-            print(f"Failed to load translation for {lang_code} from {qm_dir_path}. Attempting fallback.")
-            if new_translator.load("app_en_US", qm_dir_path): 
-                app.installTranslator(new_translator)
-                app.translator = new_translator
-                loaded = True
-                print("Successfully loaded and installed fallback translation: en_US")
-            else:
-                print(f"Failed to load fallback translation from {qm_dir_path}.")
-        
-        if loaded:
-            QApplication.postEvent(self, QEvent(QEvent.LanguageChange))
-
-    def eventFilter(self, obj, event):
-        if event.type() == QEvent.ApplicationPaletteChange:
-            self.updateAppearanceForMac()
-        return super(MainWindow, self).eventFilter(obj, event)
-            
-    def updateAppearanceForMac(self):
-        previous_dark_mode = self.isDarkMode
-        # self.isDarkMode = False # Let's not reset it here, detect and then compare
-        
-        current_system_is_dark = False
-        try:
-            from Foundation import NSUserDefaults # type: ignore
-            appleInterfaceStyle = NSUserDefaults.standardUserDefaults().stringForKey_("AppleInterfaceStyle")
-            current_system_is_dark = appleInterfaceStyle == "Dark"
-            # print(f"[updateAppearanceForMac] AppleInterfaceStyle: {appleInterfaceStyle}, current_system_is_dark: {current_system_is_dark}")
-        except Exception as e:
-            # print(f"[updateAppearanceForMac] Error getting AppleInterfaceStyle: {e}. Falling back.")
-            app = QApplication.instance()
-            if app:
-                windowText = app.palette().color(QPalette.Active, QPalette.WindowText)
-                current_system_is_dark = windowText.lightness() > 128
-                # print(f"[updateAppearanceForMac] Fallback detection: lightness > 128 is {current_system_is_dark}")
-
-        print(f"[updateAppearanceForMac] Detected system dark mode: {current_system_is_dark}. Previous MainWindow.isDarkMode: {previous_dark_mode}")
-
-        if self.isDarkMode == current_system_is_dark and previous_dark_mode == current_system_is_dark:
-             # print("[updateAppearanceForMac] No change in effective theme or system theme. MainWindow.isDarkMode already aligned.")
-             # Still, ensure styles are applied if UI isn't fully constructed yet or needs refresh
-             if hasattr(self, 'ui'):
-                if self.isDarkMode:
-                    self.applyDarkModeStyles()
-                else:
-                    self.applyLightModeStyles()
-             # No need to call callbacks if no effective change from previous state
-             return
-
-        self.isDarkMode = current_system_is_dark # Update MainWindow state
-        print(f"[updateAppearanceForMac] MainWindow.isDarkMode is NOW: {self.isDarkMode}")
-        
-        if hasattr(self, 'ui'): 
-            if self.isDarkMode:
-                # print("[updateAppearanceForMac] Applying Dark Mode Styles")
-                self.applyDarkModeStyles()
-            else:
-                # print("[updateAppearanceForMac] Applying Light Mode Styles")
-                self.applyLightModeStyles()
-        
-        # Only call updateCategoryHeaders and callbacks if the effective theme of the window changed.
-        if previous_dark_mode != self.isDarkMode:
-            print(f"[updateAppearanceForMac] Effective theme changed from {previous_dark_mode} to {self.isDarkMode}. Updating headers and notifying callbacks.")
-            self.updateCategoryHeaders() 
-            for callback in self.theme_change_callbacks:
-                callback(self.isDarkMode)
-        else:
-            print(f"[updateAppearanceForMac] System theme might have changed to {current_system_is_dark}, but MainWindow.isDarkMode ({self.isDarkMode}) was already effectively this state. No callback spam.")
+        self.theme_manager.update_category_headers()
 
     def applyDarkModeStyles(self):
-        if not hasattr(self, 'ui'): return
-
-        qss_path = self.findAssetPath("themes/dark_style.qss")
-        if not qss_path:
-            print("[MainWindow.applyDarkModeStyles] dark_style.qss not found; skipping QSS load")
-        else:
-            try:
-                print(f"[MainWindow.applyDarkModeStyles] QSS path from findAssetPath: {qss_path}")
-                with open(qss_path, "r") as f:
-                    qss_content = f.read()
-                    self.ui.centralwidget.setStyleSheet(qss_content)
-                    self._current_qss = qss_content
-                    
-                    if hasattr(self.ui, 'tableWidget'):
-                        self.ui.tableWidget.setObjectName("tableWidget")
-                    if hasattr(self.ui, 'treeWidget'):
-                        self.ui.treeWidget.setObjectName("treeWidget")
-                    if hasattr(self.ui, 'statesTreeWidget'):
-                        self.ui.statesTreeWidget.setObjectName("statesTreeWidget")
-            except Exception as e:
-                print(f"Error applying dark_style.qss: {e}")
-
-        scene = self.scene if hasattr(self, 'scene') else None
-        if scene and isinstance(scene, CheckerboardGraphicsScene):
-            scene.setBackgroundColor(QColor(50, 50, 50), QColor(40, 40, 40))
-            scene.update()
-            
-        common_toolbar_button_style = "padding: 5px; border-radius: 3px; border: none; background-color: transparent;"
-
-        if hasattr(self, 'ui') and hasattr(self.ui, 'playButton'): # Check self.ui
-            self.ui.playButton.setStyleSheet(f"QPushButton {{ color: rgba(255, 255, 255, 150); {common_toolbar_button_style} }} QPushButton:hover {{ background-color: rgba(255,255,255,0.1); }} QPushButton:pressed {{ background-color: rgba(255,255,255,0.2); }}")
-
-        if hasattr(self.ui, 'tableWidget'):
-            self.ui.tableWidget.setStyleSheet("""
-                QTableWidget#tableWidget {
-                    border: none;
-                    background-color: transparent;
-                    gridline-color: transparent;
-                    color: #D0D0D0;
-                }
-                QTableWidget#tableWidget QHeaderView::section {
-                    background-color: #424242;
-                    color: #D0D0D0;
-                    padding: 8px;
-                    border: none;
-                    border-right: 1px solid rgba(180, 180, 180, 60);
-                    border-bottom: none;
-                }
-                QTableWidget#tableWidget::item { 
-                    padding: 8px;
-                    min-height: 30px;
-                    color: #D0D0D0;
-                }
-                QTableWidget#tableWidget::item:first-column {
-                    border-right: 1px solid rgba(180, 180, 180, 60);
-                }
-                QTableWidget#tableWidget::item:selected {
-                    background-color: #505050;
-                    color: #FFFFFF;
-                }
-            """)
-        
-        # Style for QTreeWidget headers
-        tree_header_style = """
-            QHeaderView::section {
-                background-color: #424242;
-                color: #D0D0D0;
-                padding: 2px;
-                border: none;
-                border-bottom: 1px solid #606060;
-                border-right: 1px solid #606060;
-            }
-            QHeaderView::section:first {
-                border-left: none;
-            }
-        """
-        if hasattr(self.ui, 'treeWidget') and self.ui.treeWidget:
-            self.ui.treeWidget.header().setStyleSheet(tree_header_style)
-            self.ui.treeWidget.setStyleSheet("""
-                QTreeWidget#treeWidget {
-                    color: #D0D0D0;
-                    background-color: transparent;
-                }
-                QTreeWidget#treeWidget::item {
-                    color: #D0D0D0;
-                }
-                QTreeWidget#treeWidget::item:selected {
-                    background-color: #505050;
-                    color: #FFFFFF;
-                }
-            """)
-        if hasattr(self.ui, 'statesTreeWidget') and self.ui.statesTreeWidget:
-            self.ui.statesTreeWidget.header().setStyleSheet(tree_header_style)
-            self.ui.statesTreeWidget.setStyleSheet("""
-                QTreeWidget#statesTreeWidget {
-                    color: #303030;
-                    background-color: transparent;
-                }
-                QTreeWidget#statesTreeWidget::item {
-                    color: #303030;
-                }
-                QTreeWidget#statesTreeWidget::item:selected {
-                    background-color: #E0E0E0;
-                    color: #000000;
-                }
-            """)
-            self.ui.statesTreeWidget.setStyleSheet("""
-                QTreeWidget#statesTreeWidget {
-                    color: #D0D0D0;
-                    background-color: transparent;
-                }
-                QTreeWidget#statesTreeWidget::item {
-                    color: #D0D0D0;
-                }
-                QTreeWidget#statesTreeWidget::item:selected {
-                    background-color: #505050;
-                    color: #FFFFFF;
-                }
-            """)
-
-        self.updateButtonIcons() 
-        self.updateCategoryHeaders() 
-        self.ui.retranslateUi(self)
-
-        # Explicitly style problematic UI elements for dark mode
-        dark_border_color = "#606060"  # Mid-grey border
-        dark_button_bg_color = "#3A3A3A"
-        dark_button_hover_bg_color = "#4A4A4A"
-        dark_button_pressed_bg_color = "#5A5A5A"
-        dark_button_text_color = "#D0D0D0" # Light grey text for buttons
-        dark_general_text_color = "#B0B0B0" # Softer light grey for general labels
-
-        button_style_dark = (
-            f"QPushButton {{ "
-            f"border: 1px solid {dark_border_color}; "
-            f"border-radius: 6px; "
-            f"padding: 5px 10px; "
-            f"background-color: {dark_button_bg_color}; "
-            f"color: {dark_button_text_color}; "
-            f"}} "
-            f"QPushButton:hover {{ background-color: {dark_button_hover_bg_color}; }} "
-            f"QPushButton:pressed {{ background-color: {dark_button_pressed_bg_color}; }}"
-        )
-        if hasattr(self.ui, 'openFile'): self.ui.openFile.setStyleSheet(button_style_dark);
-        if hasattr(self.ui, 'exportButton'): self.ui.exportButton.setStyleSheet(button_style_dark);
-        
-        if hasattr(self.ui, 'filename'):
-            font_style_filename = "italic" if self.ui.filename.text() == "No File Open" else "normal"
-            filename_style_dark = (
-                f"font-style: {font_style_filename}; "
-                f"color: {dark_button_text_color}; " # Use button text color for prominence
-                f"border: 1.5px solid {dark_border_color}; "
-                f"border-radius: 8px; "
-                f"padding: 5px 10px;"
-            )
-            self.ui.filename.setStyleSheet(filename_style_dark)
-
-        if hasattr(self.ui, 'layersLabel'): self.ui.layersLabel.setStyleSheet(f"color: {dark_general_text_color};");
-        if hasattr(self.ui, 'statesLabel'): self.ui.statesLabel.setStyleSheet(f"color: {dark_general_text_color};");
-        if hasattr(self.ui, 'inspectorLabel'): self.ui.inspectorLabel.setStyleSheet(f"color: {dark_general_text_color};");
-        if hasattr(self.ui, 'previewLabel'): self.ui.previewLabel.setStyleSheet(f"color: {dark_general_text_color};")
+        # Delegated to ThemeManager
+        self.theme_manager.apply_dark_mode_styles()
 
     def applyLightModeStyles(self):
-        if not hasattr(self, 'ui'): return
-
-        qss_path = self.findAssetPath("themes/light_style.qss")
-        if not qss_path:
-            print("[MainWindow.applyLightModeStyles] light_style.qss not found; skipping QSS load")
-        else:
-            try:
-                with open(qss_path, "r") as f:
-                    qss_content = f.read()
-                    self.ui.centralwidget.setStyleSheet(qss_content)
-                    self._current_qss = qss_content
-                    
-                    # Apply theme to all critical widgets directly
-                    if hasattr(self.ui, 'tableWidget'):
-                        self.ui.tableWidget.setObjectName("tableWidget")
-                    if hasattr(self.ui, 'treeWidget'):
-                        self.ui.treeWidget.setObjectName("treeWidget")
-                    if hasattr(self.ui, 'statesTreeWidget'):
-                        self.ui.statesTreeWidget.setObjectName("statesTreeWidget")
-            except Exception as e:
-                print(f"Error applying light_style.qss: {e}")
-
-        scene = self.scene if hasattr(self, 'scene') else None
-        if scene and isinstance(scene, CheckerboardGraphicsScene):
-            scene.setBackgroundColor(QColor(240, 240, 240), QColor(220, 220, 220))
-            scene.update()
-            
-        common_toolbar_button_style = "padding: 5px; border-radius: 3px; border: none; background-color: transparent;"
-
-        if hasattr(self, 'ui') and hasattr(self.ui, 'playButton'): 
-            self.ui.playButton.setStyleSheet(f"QPushButton {{ color: rgba(0, 0, 0, 150); {common_toolbar_button_style} }} QPushButton:hover {{ background-color: rgba(0,0,0,0.1); }} QPushButton:pressed {{ background-color: rgba(0,0,0,0.2); }}")
-            
-        # Force style update for critical widgets
-        if hasattr(self.ui, 'tableWidget'):
-            self.ui.tableWidget.setStyleSheet("""
-                QTableWidget#tableWidget {
-                    border: none;
-                    background-color: transparent;
-                    gridline-color: transparent;
-                    color: #303030;
-                }
-                QTableWidget#tableWidget QHeaderView::section {
-                    background-color: #F0F0F0;
-                    color: #303030;
-                    padding: 8px;
-                    border: none;
-                    border-right: 1px solid rgba(120, 120, 120, 60);
-                    border-bottom: none;
-                }
-                QTableWidget#tableWidget::item { 
-                    padding: 8px;
-                    min-height: 30px;
-                    color: #303030;
-                }
-                QTableWidget#tableWidget::item:first-column {
-                    border-right: 1px solid rgba(120, 120, 120, 60);
-                }
-                QTableWidget#tableWidget::item:selected {
-                    background-color: #E0E0E0;
-                    color: #000000;
-                }
-            """)
-        
-        # Style for QTreeWidget headers (for light mode)
-        tree_header_style = """
-            QHeaderView::section {
-                background-color: #F0F0F0;
-                color: #303030;
-                padding: 2px;
-                border: none;
-                border-bottom: 1px solid #A0A0A0;
-                border-right: 1px solid #A0A0A0;
-            }
-            QHeaderView::section:first {
-                border-left: none;
-            }
-        """
-        if hasattr(self.ui, 'treeWidget') and self.ui.treeWidget:
-            self.ui.treeWidget.header().setStyleSheet(tree_header_style)
-            self.ui.treeWidget.setStyleSheet("""
-                QTreeWidget#treeWidget {
-                    color: #303030;
-                    background-color: transparent;
-                }
-                QTreeWidget#treeWidget::item {
-                    color: #303030;
-                }
-                QTreeWidget#treeWidget::item:selected {
-                    background-color: #E0E0E0;
-                    color: #000000;
-                }
-            """)
-        if hasattr(self.ui, 'statesTreeWidget') and self.ui.statesTreeWidget:
-            self.ui.statesTreeWidget.header().setStyleSheet(tree_header_style)
-            self.ui.statesTreeWidget.setStyleSheet("""
-                QTreeWidget#statesTreeWidget {
-                    color: #303030;
-                    background-color: transparent;
-                }
-                QTreeWidget#statesTreeWidget::item {
-                    color: #303030;
-                }
-                QTreeWidget#statesTreeWidget::item:selected {
-                    background-color: #E0E0E0;
-                    color: #000000;
-                }
-            """)
-        if hasattr(self.ui, 'statesTreeWidget') and self.ui.statesTreeWidget:
-            self.ui.statesTreeWidget.header().setStyleSheet(tree_header_style)
-            self.ui.statesTreeWidget.setStyleSheet("""
-                QTreeWidget#statesTreeWidget {
-                    color: #303030;
-                    background-color: transparent;
-                }
-                QTreeWidget#statesTreeWidget::item {
-                    color: #303030;
-                }
-                QTreeWidget#statesTreeWidget::item:selected {
-                    background-color: #E0E0E0;
-                    color: #000000;
-                }
-            """)
-
-        self.updateButtonIcons() 
-        self.updateCategoryHeaders() 
-        self.ui.retranslateUi(self)
-
-        # Explicitly style problematic UI elements for light mode
-        light_border_color = "#A0A0A0"  # Mid-light grey border
-        light_button_bg_color = "#F0F0F0"
-        light_button_hover_bg_color = "#E0E0E0"
-        light_button_pressed_bg_color = "#D0D0D0"
-        light_button_text_color = "#303030" # Dark grey text for buttons
-        light_general_text_color = "#505050" # Softer dark grey for general labels
-
-        button_style_light = (
-            f"QPushButton {{ "
-            f"border: 1px solid {light_border_color}; "
-            f"border-radius: 6px; "
-            f"padding: 5px 10px; "
-            f"background-color: {light_button_bg_color}; "
-            f"color: {light_button_text_color}; "
-            f"}} "
-            f"QPushButton:hover {{ background-color: {light_button_hover_bg_color}; }} "
-            f"QPushButton:pressed {{ background-color: {light_button_pressed_bg_color}; }}"
-        )
-        if hasattr(self.ui, 'openFile'): self.ui.openFile.setStyleSheet(button_style_light);
-        if hasattr(self.ui, 'exportButton'): self.ui.exportButton.setStyleSheet(button_style_light);
-
-        if hasattr(self.ui, 'filename'):
-            font_style_filename = "italic" if self.ui.filename.text() == "No File Open" else "normal"
-            text_color_filename_light = "#666666" if font_style_filename == "italic" else light_button_text_color # Keep specific color for "No File Open"
-            filename_style_light = (
-                f"font-style: {font_style_filename}; "
-                f"color: {text_color_filename_light}; "
-                f"border: 1.5px solid {light_border_color}; "
-                f"border-radius: 8px; "
-                f"padding: 5px 10px;"
-            )
-            self.ui.filename.setStyleSheet(filename_style_light)
-
-        if hasattr(self.ui, 'layersLabel'): self.ui.layersLabel.setStyleSheet(f"color: {light_general_text_color};");
-        if hasattr(self.ui, 'statesLabel'): self.ui.statesLabel.setStyleSheet(f"color: {light_general_text_color};");
-        if hasattr(self.ui, 'inspectorLabel'): self.ui.inspectorLabel.setStyleSheet(f"color: {light_general_text_color};");
-        if hasattr(self.ui, 'previewLabel'): self.ui.previewLabel.setStyleSheet(f"color: {light_general_text_color};");
+        # Delegated to ThemeManager
+        self.theme_manager.apply_light_mode_styles()
 
     def _get_all_layer_names(self, layer):
         names = set()
@@ -792,6 +338,13 @@ class MainWindow(QMainWindow):
         self.showFullPath = True
         
         self.scene = CheckerboardGraphicsScene()
+        # Initialize animation helper now that scene exists
+        from ._applyanimation import ApplyAnimation
+        self._applyAnimation = ApplyAnimation(self.scene)
+        self.applyAnimationsToPreview = self._applyAnimation.applyAnimationsToPreview
+        self.applyKeyframeAnimationToItem = self._applyAnimation.applyKeyframeAnimationToItem
+        self.applyTransitionAnimationToPreview = self._applyAnimation.applyTransitionAnimationToPreview
+        self.applySpringAnimationToItem = self._applyAnimation.applySpringAnimationToItem
         orig_make_item = self.scene.makeItemEditable
         def makeItemEditable(item):
             editable = orig_make_item(item)
@@ -963,10 +516,6 @@ class MainWindow(QMainWindow):
             return
         self.ui.tableWidget.blockSignals(True)
         self.currentInspectObject = None
-
-        if hasattr(self.scene, 'currentEditableItem') and self.scene.currentEditableItem:
-            self.scene.currentEditableItem.removeBoundingBox()
-            self.scene.currentEditableItem = None
 
         self.currentSelectedItem = current
         self.ui.tableWidget.setRowCount(0)
