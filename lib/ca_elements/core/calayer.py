@@ -35,11 +35,20 @@ class CALayer:
 
         if type == "text":
             self.layer_class = "CATextLayer"
-            self.string = "Text"
-            self.fontSize = "24"
-            self.fontFamily = "Helvetica"
-            self.alignmentMode = "center"
-            self.color = "255 255 255"
+            self.string = "Text Layer"
+            self.font = "SF Pro Text Regular"
+            self.tracking = "0"
+            self.leading = "0"
+            self.verticalAlignmentMode = "top"
+            self.wrapped = "1"
+            self.resizingMode = "auto"
+            self.allowsEdgeAntialiasing = "1"
+            self.allowsGroupOpacity = "1"
+            self.contentsFormat = "AutomaticAppKit"
+            self.cornerCurve = "circular"
+            self.classIfAvailable = "LKTextLayer"
+            self.backgroundColor = None
+
             self._content = None
             self.sublayers = {}
             self._sublayerorder = []
@@ -76,11 +85,24 @@ class CALayer:
         
         # Handle CATextLayer specific properties
         if self.layer_class == "CATextLayer":
-            self.string = self.element.get('string')
-            self.fontSize = self.element.get('fontSize')
-            self.fontFamily = self.element.get('fontFamily')
-            self.alignmentMode = self.element.get('alignmentMode')
-            self.color = self.element.get('color')
+            self.tracking = self.element.get('tracking')
+            self.leading = self.element.get('leading')
+            self.verticalAlignmentMode = self.element.get('verticalAlignmentMode')
+            self.wrapped = self.element.get('wrapped')
+            self.resizingMode = self.element.get('resizingMode')
+            self.allowsEdgeAntialiasing = self.element.get('allowsEdgeAntialiasing')
+            self.allowsGroupOpacity = self.element.get('allowsGroupOpacity')
+            self.contentsFormat = self.element.get('contentsFormat')
+            self.cornerCurve = self.element.get('cornerCurve')
+            self.classIfAvailable = self.element.get('classIfAvailable')
+
+            font_element = self.element.find('{http://www.apple.com/CoreAnimation/1.0}font')
+            if font_element is not None:
+                self.font = font_element.get('value')
+            
+            string_element = self.element.find('{http://www.apple.com/CoreAnimation/1.0}string')
+            if string_element is not None:
+                self.string = string_element.get('value')
         
         self._content = self.element.find(
             '{http://www.apple.com/CoreAnimation/1.0}contents')
@@ -179,16 +201,28 @@ class CALayer:
             
         # Handle CATextLayer specific properties
         if self.layer_class == "CATextLayer":
-            if hasattr(self, 'string') and self.string is not None:
-                e.set('string', self.string)
-            if hasattr(self, 'fontSize') and self.fontSize is not None:
-                e.set('fontSize', self.fontSize)
-            if hasattr(self, 'fontFamily') and self.fontFamily is not None:
-                e.set('fontFamily', self.fontFamily)
-            if hasattr(self, 'alignmentMode') and self.alignmentMode is not None:
-                e.set('alignmentMode', self.alignmentMode)
-            if hasattr(self, 'color') and self.color is not None:
-                e.set('color', self.color)
+            if hasattr(self, 'tracking'): e.set('tracking', self.tracking)
+            if hasattr(self, 'leading'): e.set('leading', self.leading)
+            if hasattr(self, 'verticalAlignmentMode'): e.set('verticalAlignmentMode', self.verticalAlignmentMode)
+            if hasattr(self, 'wrapped'): e.set('wrapped', self.wrapped)
+            if hasattr(self, 'resizingMode'): e.set('resizingMode', self.resizingMode)
+            if hasattr(self, 'allowsEdgeAntialiasing'): e.set('allowsEdgeAntialiasing', self.allowsEdgeAntialiasing)
+            if hasattr(self, 'allowsGroupOpacity'): e.set('allowsGroupOpacity', self.allowsGroupOpacity)
+            if hasattr(self, 'contentsFormat'): e.set('contentsFormat', self.contentsFormat)
+            if hasattr(self, 'cornerCurve'): e.set('cornerCurve', self.cornerCurve)
+            if hasattr(self, 'classIfAvailable'): e.set('classIfAvailable', self.classIfAvailable)
+
+            if hasattr(self, 'font'):
+                font_elem = ET.Element('font')
+                font_elem.set('type', 'string')
+                font_elem.set('value', self.font)
+                e.append(font_elem)
+            
+            if hasattr(self, 'string'):
+                string_elem = ET.Element('string')
+                string_elem.set('type', 'string')
+                string_elem.set('value', self.string)
+                e.append(string_elem)
 
         if self._content is not None:
             content = ET.SubElement(e, 'contents')
