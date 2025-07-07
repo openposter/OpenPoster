@@ -28,6 +28,7 @@ from .config_manager import ConfigManager
 from .settings_window import SettingsDialog
 from .exportoptions_window import ExportOptionsDialog
 from .theme_manager import ThemeManager
+from .preview_renderer import PreviewRenderer
 
 class MainWindow(QMainWindow):
     def __init__(self, config_manager, translator):
@@ -59,6 +60,8 @@ class MainWindow(QMainWindow):
         self.theme_manager.load_theme()
         
         self.initUI()
+        
+        self.preview = PreviewRenderer(self)
         
         # Restore window geometry
         self.loadWindowGeometry()
@@ -1096,339 +1099,21 @@ class MainWindow(QMainWindow):
     
     # preview section
     def renderPreview(self, root_layer, target_state=None):
-        """Render the preview of the layer hierarchy with optional target state"""
-        # Clear previous animation buffers
-        if hasattr(self._applyAnimation, 'animations'):
-            self._applyAnimation.animations.clear()
-        # Also clear MainWindow animations list
-        self.animations = []
-        # Clear scene for fresh render
-        self.scene.clear()
-        
-        # Treat the root layer's top-left as (0,0)
-        default_x, default_y, default_w, default_h = 0, 0, 1000, 1000
-        try:
-            root_x = float(root_layer.bounds[0]) if hasattr(root_layer, "bounds") and root_layer.bounds else default_x
-            root_y = float(root_layer.bounds[1]) if hasattr(root_layer, "bounds") and root_layer.bounds else default_y
-            root_w = float(root_layer.bounds[2]) if hasattr(root_layer, "bounds") and root_layer.bounds else default_w
-            root_h = float(root_layer.bounds[3]) if hasattr(root_layer, "bounds") and root_layer.bounds else default_h
-        except (ValueError, IndexError):
-            root_x, root_y, root_w, root_h = default_x, default_y, default_w, default_h
-        bounds = QRectF(0, 0, root_w, root_h)
-        
-        border_rect = QGraphicsRectItem(bounds)
-        border_rect.setPen(QPen(QColor(0, 0, 0), 2))
-        border_rect.setBrush(QBrush(Qt.transparent))
-        self.scene.addItem(border_rect)
-        
-        base_state = None
-        if hasattr(root_layer, "states") and root_layer.states and "Base State" in root_layer.states:
-            base_state = root_layer.states["Base State"]
-        
-        root_pos = QPointF(0, 0)
-        
-        self.renderLayer(root_layer, root_pos, QTransform(), base_state, target_state)
-        
-        all_items_rect = self.scene.itemsBoundingRect()
-        self.scene.setSceneRect(all_items_rect)
-        # Capture all animations applied during this render
-        if hasattr(self._applyAnimation, 'animations'):
-            self.animations = list(self._applyAnimation.animations)
+        anims = self.preview.render_preview(root_layer, target_state)
+        self.animations = anims
+        return anims
 
     def renderLayer(self, layer, parent_pos, parent_transform, base_state=None, target_state=None):
-        if hasattr(layer, "hidden") and layer.hidden:
-            return
-        if layer.id == self.cafile.rootlayer.id:
-            for layer_id in layer._sublayerorder:
-                sublayer = layer.sublayers.get(layer_id)
-                if sublayer:
-                    self.renderLayer(sublayer, QPointF(0, 0), parent_transform, base_state, target_state)
-            return
-
-        absolute_position = QPointF(parent_pos)
-        layer_position = QPointF(0, 0)
-        
-        if hasattr(layer, "position") and layer.position:
-            try:
-                layer_position = QPointF(float(layer.position[0]), float(layer.position[1]))
-            except (ValueError, IndexError):
-                pass
-        
-        bounds = QRectF(0, 0, 100, 100)
-        if hasattr(layer, "bounds") and layer.bounds:
-            try:
-                x = float(layer.bounds[0])
-                y = float(layer.bounds[1])
-                w = float(layer.bounds[2])
-                h = float(layer.bounds[3])
-                bounds = QRectF(x, y, w, h)
-            except (ValueError, IndexError):
-                pass
-        
-        transform = QTransform(parent_transform)
-        if hasattr(layer, "transform") and layer.transform:
-            layer_transform = self.parseTransform(layer.transform)
-            transform = transform * layer_transform
-        
-        anchor_point = QPointF(0.5, 0.5)
-        if hasattr(layer, "anchorPoint") and layer.anchorPoint:
-            try:
-                anchor_parts = layer.anchorPoint.split(" ")
-                if len(anchor_parts) >= 2:
-                    anchor_point = QPointF(float(anchor_parts[0]), float(anchor_parts[1]))
-            except:
-                pass
-        
-        z_position = 0
-        if hasattr(layer, "zPosition") and layer.zPosition:
-            try:
-                z_position = float(layer.zPosition)
-            except (ValueError, TypeError):
-                pass
-        
-        opacity = 1.0
-        if hasattr(layer, "opacity") and layer.opacity is not None:
-            try:
-                opacity = float(layer.opacity)
-            except (ValueError, TypeError):
-                pass
-        
-        background_color = None
-        if hasattr(layer, "backgroundColor") and layer.backgroundColor:
-            background_color = self.parseColor(layer.backgroundColor)
-        
-        corner_radius = 0
-        if hasattr(layer, "cornerRadius") and layer.cornerRadius:
-            try:
-                corner_radius = float(layer.cornerRadius)
-            except (ValueError, TypeError):
-                pass
-        
-        if base_state and hasattr(base_state, "elements"):
-            for element in base_state.elements:
-                if element.__class__.__name__ == "LKStateSetValue" and element.targetId == layer.id:
-                    if element.keyPath == "position.x" and element.value:
-                        try:
-                            layer_position.setX(float(element.value))
-                        except (ValueError, TypeError):
-                            pass
-                    elif element.keyPath == "position.y" and element.value:
-                        try:
-                            layer_position.setY(float(element.value))
-                        except (ValueError, TypeError):
-                            pass
-                    elif element.keyPath == "transform" and element.value:
-                        transform = self.parseTransform(element.value) * parent_transform
-                    elif element.keyPath == "opacity" and element.value:
-                        try:
-                            opacity = float(element.value)
-                        except (ValueError, TypeError):
-                            pass
-                    elif element.keyPath == "zPosition" and element.value:
-                        try:
-                            z_position = float(element.value)
-                        except (ValueError, TypeError):
-                            pass
-                    elif element.keyPath == "backgroundColor" and element.value:
-                        background_color = self.parseColor(element.value)
-                    elif element.keyPath == "cornerRadius" and element.value:
-                        try:
-                            corner_radius = float(element.value)
-                        except (ValueError, TypeError):
-                            pass
-        
-        if target_state and hasattr(target_state, "elements"):
-            for element in target_state.elements:
-                if element.__class__.__name__ == "LKStateSetValue" and element.targetId == layer.id:
-                    if element.keyPath == "position.x" and element.value:
-                        try:
-                            layer_position.setX(float(element.value))
-                        except (ValueError, TypeError):
-                            pass
-                    elif element.keyPath == "position.y" and element.value:
-                        try:
-                            layer_position.setY(float(element.value))
-                        except (ValueError, TypeError):
-                            pass
-                    elif element.keyPath == "transform" and element.value:
-                        transform = self.parseTransform(element.value) * parent_transform
-                    elif element.keyPath == "opacity" and element.value:
-                        try:
-                            opacity = float(element.value)
-                        except (ValueError, TypeError):
-                            pass
-                    elif element.keyPath == "zPosition" and element.value:
-                        try:
-                            z_position = float(element.value)
-                        except (ValueError, TypeError):
-                            pass
-                    elif element.keyPath == "backgroundColor" and element.value:
-                        background_color = self.parseColor(element.value)
-                    elif element.keyPath == "cornerRadius" and element.value:
-                        try:
-                            corner_radius = float(element.value)
-                        except (ValueError, TypeError):
-                            pass
-        
-        has_content = False
-        missing_asset = False
-        
-        is_text_layer = hasattr(layer, "layer_class") and layer.layer_class == "CATextLayer"
-        
-        if is_text_layer:
-            text_item = QGraphicsTextItem()
-            text = layer.string if hasattr(layer, "string") and layer.string else "Text Layer"
-            text_item.setPlainText(text)
-            
-            if hasattr(layer, "fontSize") and layer.fontSize:
-                try:
-                    font = text_item.font()
-                    font_size = float(layer.fontSize)
-                    font.setPointSizeF(font_size)
-                    text_item.setFont(font)
-                except (ValueError, TypeError):
-                    pass
-            
-            if hasattr(layer, "fontFamily") and layer.fontFamily:
-                font = text_item.font()
-                font.setFamily(layer.fontFamily)
-                text_item.setFont(font)
-            
-            if hasattr(layer, "color") and layer.color:
-                color = self.parseColor(layer.color)
-                if color:
-                    text_item.setDefaultTextColor(color)
-            
-            text_item.setTransformOriginPoint(bounds.width() * anchor_point.x(),
-                                         bounds.height() * anchor_point.y())
-            pos_x = layer_position.x() - bounds.width() * anchor_point.x()
-            pos_y = layer_position.y() - bounds.height() * anchor_point.y()
-            text_item.setPos(pos_x, pos_y)
-            text_item.setTransform(transform)
-            text_item.setZValue(z_position)
-            text_item.setOpacity(opacity)
-            
-            text_item.setData(0, layer.id)
-            text_item.setData(1, "Layer")
-            self.scene.addItem(text_item)
-            has_content = True
-            
-            self.applyDefaultAnimationsToLayer(layer, text_item)
-            
-        elif hasattr(layer, "_content") and layer._content is not None:
-            if hasattr(layer, "content") and hasattr(layer.content, "src"):
-                src_path = layer.content.src
-                # umm...
-                self._assets.cafilepath = self.cafilepath
-                self._assets.cachedImages = self.cachedImages
-                pixmap = self.loadImage(src_path)
-                self.cachedImages = self._assets.cachedImages
-                
-                if not pixmap and hasattr(self, 'missing_assets') and src_path in self.missing_assets:
-                    missing_asset = True
-                    
-                if pixmap:
-                    pixmap_item = QGraphicsPixmapItem()
-                    pixmap_item.setPixmap(pixmap)
-
-                    scale_x = bounds.width() / pixmap.width() if pixmap.width() > 0 else 1.0
-                    scale_y = bounds.height() / pixmap.height() if pixmap.height() > 0 else 1.0
-                    item_transform = QTransform()
-                    item_transform.scale(scale_x, scale_y)
-                    pixmap_item.setTransform(item_transform * transform)
-
-                    scaled_width = pixmap.width() * scale_x
-                    scaled_height = pixmap.height() * scale_y
-                    pixmap_item.setTransformOriginPoint(scaled_width * anchor_point.x(),
-                                                        scaled_height * anchor_point.y())
-
-                    pos_x = layer_position.x() - scaled_width * anchor_point.x()
-                    pos_y = layer_position.y() - scaled_height * anchor_point.y()
-                    pixmap_item.setPos(pos_x, pos_y)
-
-                    pixmap_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
-                    pixmap_item.setZValue(z_position)
-                    pixmap_item.setOpacity(opacity)
-                    pixmap_item.setData(0, layer.id)
-                    pixmap_item.setData(1, "Layer")
-                    self.scene.addItem(pixmap_item)
-                    has_content = True
-                    
-                    self.applyDefaultAnimationsToLayer(layer, pixmap_item)
-        
-        if not has_content:
-            rect_item = QGraphicsRectItem()
-            rect_item.setRect(bounds)
-            rect_item.setTransformOriginPoint(bounds.width() * anchor_point.x(),
-                                             bounds.height() * anchor_point.y())
-            
-            pos_x = layer_position.x() - bounds.width() * anchor_point.x()
-            pos_y = layer_position.y() - bounds.height() * anchor_point.y()
-            
-            rect_item.setPos(pos_x, pos_y)
-            rect_item.setTransform(transform)
-            rect_item.setZValue(z_position)
-            rect_item.setOpacity(opacity)
-            
-            pen = QPen(QColor(200, 200, 200, 180), 1.0)
-            brush = QBrush(QColor(180, 180, 180, 30))
-            
-            if layer.id == self.cafile.rootlayer.id:
-                pen = QPen(QColor(0, 0, 0, 200), 1.5)
-                brush = QBrush(Qt.transparent)
-            
-            if missing_asset:
-                pen = QPen(QColor(255, 0, 0, 200), 2.0)
-                brush = QBrush(QColor(255, 200, 200, 30))
-            
-            if background_color:
-                brush = QBrush(background_color)
-            
-            if corner_radius > 0:
-                pen.setStyle(Qt.PenStyle.DashLine)
-            
-            rect_item.setPen(pen)
-            rect_item.setBrush(brush)
-            rect_item.setData(0, layer.id)
-            rect_item.setData(1, "Layer")
-            self.scene.addItem(rect_item)
-            
-            self.applyDefaultAnimationsToLayer(layer, rect_item)
-            
-        
-        if hasattr(layer, "_sublayerorder") and layer._sublayerorder:
-            for layer_id in layer._sublayerorder:
-                sublayer = layer.sublayers.get(layer_id)
-                if sublayer:
-                    self.renderLayer(sublayer, layer_position, transform, base_state, target_state)
+        return self.preview.render_layer(layer, parent_pos, parent_transform, base_state, target_state)
     
     def applyDefaultAnimationsToLayer(self, layer, item):
-        if not hasattr(layer, "animations") or not layer.animations:
-            return
-            
-        for animation in layer.animations:
-            if animation.type == "CAKeyframeAnimation":
-                self.applyKeyframeAnimationToItem(item, animation.keyPath, animation)
+        return self.preview.apply_default_animations(layer, item)
     
     def highlightLayerInPreview(self, layer):
-        self.scene.clearSelection()
-        for item in self.scene.items():
-            if hasattr(item, "data") and item.data(0) == layer.id and item.data(1) == "Layer":
-                if isinstance(item, QGraphicsRectItem):
-                    if layer.id == self.cafile.rootlayer.id:
-                        item.setPen(QPen(QColor(0, 120, 215, 255), 2))
-                    else:
-                        item.setPen(QPen(QColor(0, 120, 215, 200), 1.5))
-                    item.setSelected(True)
-                    self.ui.graphicsView.centerOn(item)
-                
-        if layer.id is not None:
-            for item in self.scene.items():
-                if hasattr(item, "data") and item.data(0) == layer.id + "_name":
-                    item.setDefaultTextColor(QColor(0, 120, 215))
+        return self.preview.highlight_layer(layer)
     
     def highlightAnimationInPreview(self, layer, animation):
-        self.highlightLayerInPreview(layer)
+        return self.preview.highlight_animation(layer, animation)
 
     def populateStatesTreeWidget(self):
         if not hasattr(self, 'cafile') or not self.cafile:

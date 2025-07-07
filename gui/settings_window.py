@@ -399,17 +399,6 @@ class SettingsDialog(QDialog):
         if self.parent_window.isDarkMode == is_dark:
             return
 
-        # Apply theme to this dialog too
-        self.apply_theme_to_dialog(is_dark)
-
-        self.parent_window.isDarkMode = is_dark
-        if is_dark:
-            self.parent_window.applyDarkModeStyles()
-        else:
-            self.parent_window.applyLightModeStyles()
-
-        self.parent_window.updateCategoryHeaders()
-        self.parent_window.updateButtonIcons()
-
+        self.parent_window.theme_manager.load_theme()
         for callback in self.parent_window.theme_change_callbacks:
             callback(is_dark)

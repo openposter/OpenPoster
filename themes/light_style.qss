@@ -290,4 +290,21 @@ QInputDialog {
 
 QInputDialog QLabel {
     color: #303030;
+}
+
+#inspectorCategoryHeader {
+    background-color: #F0F0F0;
+    color: #303030;
+}
+
+#inspectorCategoryHeader QLabel {
+    color: #303030;
+}
+
+#openFileButton {
+    color: #303030;
+}
+
+#fileNameLabel {
+    color: #303030;
 } 
