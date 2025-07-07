@@ -1429,6 +1429,10 @@ class MainWindow(QMainWindow):
             def update_scale_label(value):
                 scale_label.setText(f"{value}%")
                 
+            update_timer = QTimer()
+            update_timer.setSingleShot(True)
+            update_timer.setInterval(50)
+                
             def apply_scale(value):
                 scale_factor = value / 100.0
                 if hasattr(self, 'currentInspectObject') and self.currentInspectObject:
@@ -1467,13 +1471,18 @@ class MainWindow(QMainWindow):
                                 layer.bounds[2] = str(new_width)
                                 layer.bounds[3] = str(new_height)
 
-                            self.renderPreview(self.cafile.rootlayer)
+                            if not update_timer.isActive():
+                                update_timer.timeout.connect(lambda: self.renderPreview(self.cafile.rootlayer))
+                                update_timer.start()
+                                
                             self.markDirty()
                         except (ValueError, IndexError) as e:
                             print(f"Error applying scale: {e}")
             
             scale_slider.valueChanged.connect(update_scale_label)
-            scale_slider.sliderReleased.connect(lambda: apply_scale(scale_slider.value()))
+
+            scale_slider.valueChanged.connect(lambda value: apply_scale(value))
+            scale_slider.sliderReleased.connect(lambda: self.renderPreview(self.cafile.rootlayer))
             
             slider_layout.addWidget(scale_slider)
             slider_layout.addWidget(scale_label)
