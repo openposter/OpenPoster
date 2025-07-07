@@ -20,7 +20,7 @@ class CALayer:
         self.transform = None
         self.anchorPoint = None
         self.geometryFlipped = "0"
-        self.opacity = "100"
+        self.opacity = "1.0"
         self.zPosition = None
         self.backgroundColor = "0 0 0" # black
         self.cornerRadius = None

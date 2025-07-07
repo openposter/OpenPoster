@@ -51,8 +51,8 @@ class WelcomeWindow(QDialog):
         self.btn_new.setFixedSize(460, 50)
         self.btn_open.setFixedSize(460, 50)
         
-        self.btn_new.setStyleSheet("font-size: 15px; border-radius: 20px;")
-        self.btn_open.setStyleSheet("font-size: 15px; border-radius: 20px;")
+        self.btn_new.setStyleSheet("font-size: 15px; border-radius: 25px;")
+        self.btn_open.setStyleSheet("font-size: 15px; border-radius: 25px;")
 
         bottom_layout.addWidget(self.btn_new)
         bottom_layout.addWidget(self.btn_open)

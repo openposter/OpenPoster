@@ -1216,7 +1216,11 @@ class MainWindow(QMainWindow):
                     row_index += 1
                 
                 if hasattr(element, "opacity") and element.opacity is not None:
-                    self.add_inspector_row("OPACITY", self.formatFloat(element.opacity), row_index)
+                    try:
+                        opacity_percent = int(float(element.opacity) * 100)
+                        self.add_inspector_row("OPACITY", str(opacity_percent), row_index)
+                    except (ValueError, TypeError):
+                        self.add_inspector_row("OPACITY", "100", row_index)
                     row_index += 1
                 
                 if hasattr(element, "mica_animatedAlpha") and element.mica_animatedAlpha is not None:
@@ -2376,6 +2380,10 @@ class MainWindow(QMainWindow):
         play_pause_shortcut.activated.connect(self.toggleAnimations)
         self.shortcuts_list.append(play_pause_shortcut)
 
+        delete_layer_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Delete), self)
+        delete_layer_shortcut.activated.connect(self.delete_selected_layer)
+        self.shortcuts_list.append(delete_layer_shortcut)
+
     # settings section
     def showSettingsDialog(self):
         if hasattr(self, 'config_manager'):
@@ -2677,62 +2685,81 @@ class MainWindow(QMainWindow):
         self.markDirty()
 
     def onInspectorChanged(self, item):
-        if item.column() != 1:
+        if not self.currentInspectObject or not self.ui.tableWidget.isEnabled():
             return
-            
-        self.ui.tableWidget.blockSignals(True)
-        obj = getattr(self, 'currentInspectObject', None)
-        if obj is None:
-            self.ui.tableWidget.blockSignals(False)
+
+        row = item.row()
+        key_item = self.ui.tableWidget.item(row, 0)
+        if not key_item:
             return
-            
-        key = self.ui.tableWidget.item(item.row(), 0).text()
-        val = item.text()
-        parts = key.lower().split()
-        xml_key = parts[0] + ''.join(p.capitalize() for p in parts[1:])
-        
-        if not hasattr(obj, xml_key):
-            self.ui.tableWidget.blockSignals(False)
-            return
-            
-        orig_val = getattr(obj, xml_key)
-        if isinstance(orig_val, list):
-            if xml_key == 'bounds' and len(orig_val) == 4:
-                nums = re.findall(r'-?\d+\.?\d*', str(val))
-                if len(nums) == 2:
-                    orig_val[2] = nums[0]
-                    orig_val[3] = nums[1]
-                    setattr(obj, xml_key, orig_val)
-                else:
-                    setattr(obj, xml_key, nums)
-            else:
-                nums = re.findall(r'-?\d+\.?\d*', str(val))
-                setattr(obj, xml_key, nums)
-        else:
-            setattr(obj, xml_key, val)
-        
-        self.ui.tableWidget.blockSignals(False)
-        self.markDirty()
-        
-        update_properties = ['position', 'bounds', 'transform', 'opacity', 'backgroundColor', 'cornerRadius',
-                            'string', 'fontSize', 'fontFamily', 'alignmentMode', 'color']
-        
-        if xml_key in update_properties:
-            if hasattr(self, 'scene') and self.scene:
-                for item_in_scene in self.scene.items():
-                    if hasattr(item_in_scene, "data") and item_in_scene.data(0) == obj.id and item_in_scene.data(1) == "Layer":
-                        if xml_key == 'position' and hasattr(obj, 'position') and obj.position:
-                            try:
-                                x = float(obj.position[0])
-                                y = float(obj.position[1])
-                                item_in_scene.setPos(x, y)
-                                editable = self.scene.editableItems.get(id(item_in_scene))
-                                if editable:
-                                    editable.updateBoundingBox()
-                            except (ValueError, IndexError):
-                                pass
-                        break
-            self.renderPreview(self.cafile.rootlayer)
+
+        key = key_item.text()
+        value = item.text()
+
+        if hasattr(self, 'currentInspectObject') and self.currentInspectObject:
+            if self.currentInspectObject.__class__.__name__ == "CALayer":
+                if key == 'NAME':
+                    self.currentInspectObject.name = value
+                    # Update tree widget
+                    selected_item = self.ui.treeWidget.currentItem()
+                    if selected_item:
+                        selected_item.setText(0, value)
+                elif key == 'POSITION':
+                    self.currentInspectObject.position = value.split(" ")
+                    self.renderPreview(self.cafile.rootlayer)
+                elif key == 'BOUNDS':
+                    self.currentInspectObject.bounds = value.split(" ")
+                    self.renderPreview(self.cafile.rootlayer)
+                elif key == 'ANCHOR POINT':
+                    self.currentInspectObject.anchorPoint = value
+                    self.renderPreview(self.cafile.rootlayer)
+                elif key == 'Z-POSITION':
+                    self.currentInspectObject.zPosition = value
+                elif key == 'OPACITY':
+                    try:
+                        clean_value = item.text().strip().replace('%', '')
+                        if not clean_value:
+                            return
+
+                        percent_val = float(clean_value)
+                        backend_val = max(0.0, min(100.0, percent_val)) / 100.0
+                        
+                        self.currentInspectObject.opacity = f"{backend_val:.2f}"
+                        
+                        self.ui.tableWidget.blockSignals(True)
+                        item.setText(str(int(backend_val * 100)))
+                        self.ui.tableWidget.blockSignals(False)
+                        
+                        self.renderPreview(self.cafile.rootlayer)
+                    except ValueError:
+                        pass
+                elif key == 'BACKGROUND COLOR':
+                    color = QColorDialog.getColor(self.parseColor(item.text()), self, "Select Color")
+                    if color.isValid():
+                        color_str = f"{color.redF()} {color.greenF()} {color.blueF()} {color.alphaF()}"
+                        self.currentInspectObject.backgroundColor = color_str
+                        item.setText(self.formatColor(color_str))
+                        self.renderPreview(self.cafile.rootlayer)
+                elif key == 'CORNER RADIUS':
+                    self.currentInspectObject.cornerRadius = value
+                    self.renderPreview(self.cafile.rootlayer)
+                elif key == 'STRING':
+                    self.currentInspectObject.string = value
+                    self.renderPreview(self.cafile.rootlayer)
+                elif key == 'FONT SIZE':
+                    self.currentInspectObject.fontSize = value
+                    self.renderPreview(self.cafile.rootlayer)
+                elif key == 'FONT FAMILY':
+                    self.currentInspectObject.fontFamily = value
+                    self.renderPreview(self.cafile.rootlayer)
+                elif key == 'ALIGNMENT MODE':
+                    self.currentInspectObject.alignmentMode = value
+                    self.renderPreview(self.cafile.rootlayer)
+                elif key == 'COLOR':
+                    self.currentInspectObject.color = value
+                    self.renderPreview(self.cafile.rootlayer)
+                
+            self.markDirty()
 
     def zoomIn(self):
         self.ui.graphicsView.handleZoom(120)
