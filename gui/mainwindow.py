@@ -4,8 +4,8 @@ import math
 from lib.ca_elements.core import CAFile, CALayer
 from PySide6 import QtCore
 from PySide6.QtCore import Qt, QRectF, QPointF, QSize, QEvent, QVariantAnimation, QKeyCombination, QKeyCombination, QTimer, QSettings, QStandardPaths, QDir, QObject, QProcess, QByteArray, QBuffer, QIODevice, QXmlStreamReader, QPoint, QMimeData, QRegularExpression, QTranslator
-from PySide6.QtGui import QPixmap, QImage, QBrush, QPen, QColor, QTransform, QPainter, QLinearGradient, QIcon, QPalette, QFont, QShortcut, QKeySequence, QAction, QCursor
-from PySide6.QtWidgets import QFileDialog, QTreeWidgetItem, QMainWindow, QTableWidgetItem, QGraphicsRectItem, QGraphicsPixmapItem, QGraphicsTextItem, QApplication, QHeaderView, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QTreeWidget, QWidget, QGraphicsItemAnimation, QMessageBox, QDialog, QColorDialog, QProgressDialog, QSizePolicy, QSplitter, QFrame, QToolButton, QGraphicsView, QGraphicsScene, QStyleFactory, QSpacerItem, QMenu, QLineEdit, QTableWidget, QTableWidgetItem, QSystemTrayIcon, QGraphicsProxyWidget, QGraphicsDropShadowEffect, QMenu, QTreeWidgetItemIterator, QInputDialog, QSlider
+from PySide6.QtGui import QPixmap, QImage, QBrush, QPen, QColor, QTransform, QPainter, QLinearGradient, QIcon, QPalette, QFont, QShortcut, QKeySequence, QAction, QCursor, QDesktopServices
+from PySide6.QtWidgets import QFileDialog, QTreeWidgetItem, QMainWindow, QTableWidgetItem, QGraphicsRectItem, QGraphicsPixmapItem, QGraphicsTextItem, QApplication, QHeaderView, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QTreeWidget, QWidget, QGraphicsItemAnimation, QMessageBox, QDialog, QColorDialog, QProgressDialog, QSizePolicy, QSplitter, QFrame, QToolButton, QGraphicsView, QGraphicsScene, QStyleFactory, QSpacerItem, QMenu, QLineEdit, QTableWidget, QTableWidgetItem, QSystemTrayIcon, QGraphicsProxyWidget, QGraphicsDropShadowEffect, QMenu, QTreeWidgetItemIterator, QInputDialog, QSlider, QTextEdit
 from ui.ui_mainwindow import Ui_OpenPoster
 from .custom_widgets import CustomGraphicsView, CheckerboardGraphicsScene
 import PySide6.QtCore as QtCore
@@ -2749,6 +2749,11 @@ class MainWindow(QMainWindow):
             if event.key() in (Qt.Key_Minus, Qt.Key_Underscore): # Removed Qt.KeypadMinus
                 self.zoomOut()
                 return
+        if event.key() == Qt.Key_Delete or event.key() == Qt.Key_Backspace:
+            focused_widget = QApplication.focusWidget()
+            if not isinstance(focused_widget, (QLineEdit, QTextEdit)):
+                self.delete_selected_layer()
+                return
         super(MainWindow, self).keyPressEvent(event)
 
     # Run nugget export asynchronously using QProcess
@@ -2846,3 +2851,32 @@ class MainWindow(QMainWindow):
             msg_box.setStyleSheet(self._current_qss)
             
         return msg_box
+
+    def delete_selected_layer(self):
+        selected_items = self.ui.treeWidget.selectedItems()
+        if not selected_items:
+            return
+
+        selected_item = selected_items[0]
+        layer_id = selected_item.text(2)
+
+        if not layer_id or not hasattr(self, 'cafile') or not self.cafile:
+            return
+
+        if layer_id == self.cafile.rootlayer.id:
+            return
+
+        reply = QMessageBox.question(self, 'Delete Layer',
+                                     f"Are you sure you want to delete the layer '{selected_item.text(0)}'?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+
+        if reply == QMessageBox.StandardButton.Yes:
+            if self.cafile.rootlayer.removelayer(layer_id):
+                (selected_item.parent() or self.ui.treeWidget.invisibleRootItem()).removeChild(selected_item)
+
+                if hasattr(self, 'currentInspectObject') and self.currentInspectObject and self.currentInspectObject.id == layer_id:
+                    self.ui.tableWidget.setRowCount(0)
+                    self.currentInspectObject = None
+                
+                self.renderPreview(self.cafile.rootlayer)
+                self.markDirty()

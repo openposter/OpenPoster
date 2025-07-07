@@ -154,6 +154,19 @@ class CALayer:
         self._sublayerorder.append(layer.id)
         return self.findlayer(layer.id)
 
+    def removelayer(self, layer_id):
+        if layer_id in self.sublayers:
+            del self.sublayers[layer_id]
+            if layer_id in self._sublayerorder:
+                self._sublayerorder.remove(layer_id)
+            return True
+        
+        for sublayer in self.sublayers.values():
+            if sublayer.removelayer(layer_id):
+                return True
+            
+        return False
+
     def findlayer(self, uniqueid):
         # must be a unique value or it will return the first instance it finds because im too lazy - retron
         for id in self._sublayerorder:
