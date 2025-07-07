@@ -5,7 +5,7 @@ from lib.ca_elements.core import CAFile, CALayer
 from PySide6 import QtCore
 from PySide6.QtCore import Qt, QRectF, QPointF, QSize, QEvent, QVariantAnimation, QKeyCombination, QKeyCombination, QTimer, QSettings, QStandardPaths, QDir, QObject, QProcess, QByteArray, QBuffer, QIODevice, QXmlStreamReader, QPoint, QMimeData, QRegularExpression, QTranslator
 from PySide6.QtGui import QPixmap, QImage, QBrush, QPen, QColor, QTransform, QPainter, QLinearGradient, QIcon, QPalette, QFont, QShortcut, QKeySequence, QAction, QCursor
-from PySide6.QtWidgets import QFileDialog, QTreeWidgetItem, QMainWindow, QTableWidgetItem, QGraphicsRectItem, QGraphicsPixmapItem, QGraphicsTextItem, QApplication, QHeaderView, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QTreeWidget, QWidget, QGraphicsItemAnimation, QMessageBox, QDialog, QColorDialog, QProgressDialog, QSizePolicy, QSplitter, QFrame, QToolButton, QGraphicsView, QGraphicsScene, QStyleFactory, QSpacerItem, QMenu, QLineEdit, QTableWidget, QTableWidgetItem, QSystemTrayIcon, QGraphicsProxyWidget, QGraphicsDropShadowEffect, QMenu, QTreeWidgetItemIterator, QInputDialog
+from PySide6.QtWidgets import QFileDialog, QTreeWidgetItem, QMainWindow, QTableWidgetItem, QGraphicsRectItem, QGraphicsPixmapItem, QGraphicsTextItem, QApplication, QHeaderView, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QTreeWidget, QWidget, QGraphicsItemAnimation, QMessageBox, QDialog, QColorDialog, QProgressDialog, QSizePolicy, QSplitter, QFrame, QToolButton, QGraphicsView, QGraphicsScene, QStyleFactory, QSpacerItem, QMenu, QLineEdit, QTableWidget, QTableWidgetItem, QSystemTrayIcon, QGraphicsProxyWidget, QGraphicsDropShadowEffect, QMenu, QTreeWidgetItemIterator, QInputDialog, QSlider
 from ui.ui_mainwindow import Ui_OpenPoster
 from .custom_widgets import CustomGraphicsView, CheckerboardGraphicsScene
 import PySide6.QtCore as QtCore
@@ -680,6 +680,7 @@ class MainWindow(QMainWindow):
 
                 layer.bounds = ['0', '0', str(new_width), str(new_height)]
                 layer.position = [str(center_x), str(center_y)]
+                layer.scale_factor = 0.3
             except (ValueError, IndexError) as e:
                 print(f"Warning: Could not get root layer bounds to resize new layer: {e}")
                 pass
@@ -689,6 +690,18 @@ class MainWindow(QMainWindow):
             if not ok or not text:
                 return
             layer.string = text
+            
+            if not hasattr(layer, "fontSize") or not layer.fontSize:
+                root_height = float(root_layer.bounds[3])
+                default_font_size = int(root_height * 0.05 * 2)
+                layer.fontSize = str(default_font_size)
+            if not hasattr(layer, "fontFamily") or not layer.fontFamily:
+                layer.fontFamily = "Helvetica"
+            if not hasattr(layer, "alignmentMode") or not layer.alignmentMode:
+                layer.alignmentMode = "center"
+            if not hasattr(layer, "color") or not layer.color:
+                layer.color = "255 255 255"
+                
         elif layer_type == "image":
             image_path, _ = QFileDialog.getOpenFileName(self, "Select Image File", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)")
             if not image_path:
@@ -1125,6 +1138,12 @@ class MainWindow(QMainWindow):
                     bounds_str = self.formatPoint(" ".join(element.bounds))
                     self.add_inspector_row("BOUNDS", bounds_str, row_index)
                     row_index += 1
+                    
+                    if element.id != self.cafile.rootlayer.id:
+                        if not hasattr(element, "scale_factor"):
+                            element.scale_factor = 1.0
+                        self.add_inspector_row("SCALE", str(element.scale_factor), row_index)
+                        row_index += 1
                 
                 if hasattr(element, "frame") and element.frame:
                     frame_str = self.formatPoint(" ".join(element.frame))
@@ -1391,15 +1410,86 @@ class MainWindow(QMainWindow):
         
         value_str = str(value)
         
-        if isinstance(value, bool) or (isinstance(value_str, str) and value_str.lower() in ["yes", "no", "true", "false"]):
+        if key == "SCALE":
+            slider_widget = QWidget()
+            slider_layout = QHBoxLayout(slider_widget)
+            slider_layout.setContentsMargins(2, 2, 2, 2)
+            
+            scale_slider = QSlider(Qt.Horizontal)
+            scale_slider.setMinimum(10)  # 10% scale
+            scale_slider.setMaximum(200)  # 200% scale
+
+            current_scale = float(value_str)
+            scale_slider.setValue(int(current_scale * 100))
+            scale_slider.setTickPosition(QSlider.TicksBelow)
+            scale_slider.setTickInterval(10)
+            
+            scale_label = QLabel(f"{int(current_scale * 100)}%")
+            
+            def update_scale_label(value):
+                scale_label.setText(f"{value}%")
+                
+            def apply_scale(value):
+                scale_factor = value / 100.0
+                if hasattr(self, 'currentInspectObject') and self.currentInspectObject:
+                    layer = self.currentInspectObject
+                    if hasattr(layer, 'bounds') and len(layer.bounds) >= 4:
+                        try:
+                            layer.scale_factor = scale_factor
+                            
+                            root_layer = self.cafile.rootlayer
+                            root_width = float(root_layer.bounds[2])
+                            root_height = float(root_layer.bounds[3])
+                            
+                            is_text_layer = hasattr(layer, "layer_class") and layer.layer_class == "CATextLayer"
+                            
+                            if is_text_layer:
+                                base_font_size = root_height * 0.05
+                                new_font_size = base_font_size * scale_factor * 2 
+                                
+                                if hasattr(layer, "fontSize"):
+                                    layer.fontSize = str(int(new_font_size))
+                            else:
+                                target_width = root_width * (scale_factor)
+                                target_height = root_height * (scale_factor)
+
+                                current_width = float(layer.bounds[2])
+                                current_height = float(layer.bounds[3])
+                                aspect_ratio = current_width / current_height if current_height > 0 else 1.0
+
+                                if aspect_ratio > 1:
+                                    new_width = target_width
+                                    new_height = target_width / aspect_ratio
+                                else:
+                                    new_height = target_height
+                                    new_width = target_height * aspect_ratio
+
+                                layer.bounds[2] = str(new_width)
+                                layer.bounds[3] = str(new_height)
+
+                            self.renderPreview(self.cafile.rootlayer)
+                            self.markDirty()
+                        except (ValueError, IndexError) as e:
+                            print(f"Error applying scale: {e}")
+            
+            scale_slider.valueChanged.connect(update_scale_label)
+            scale_slider.sliderReleased.connect(lambda: apply_scale(scale_slider.value()))
+            
+            slider_layout.addWidget(scale_slider)
+            slider_layout.addWidget(scale_label)
+            
+            self.ui.tableWidget.setCellWidget(row_index, 1, slider_widget)
+        elif isinstance(value, bool) or (isinstance(value_str, str) and value_str.lower() in ["yes", "no", "true", "false"]):
             if isinstance(value, bool):
                 display_value = "Yes" if value else "No"
             else:
                 display_value = value_str.capitalize()
             value_item = QTableWidgetItem(display_value)
+            self.ui.tableWidget.setItem(row_index, 1, value_item)
             
         elif isinstance(value, (int, float)) or value_str.replace(".", "", 1).replace("-", "", 1).isdigit():
             value_item = QTableWidgetItem(self.formatFloat(value) if isinstance(value, (float)) else str(value))
+            self.ui.tableWidget.setItem(row_index, 1, value_item)
             
         elif value_str.startswith("#") and (len(value_str) == 7 or len(value_str) == 9):
             try:
@@ -1414,6 +1504,7 @@ class MainWindow(QMainWindow):
                     value_item = QTableWidgetItem(value_str)
             except:
                 value_item = QTableWidgetItem(value_str)
+            self.ui.tableWidget.setItem(row_index, 1, value_item)
                 
         elif isinstance(value_str, str) and " " in value_str and all(p.replace(".", "", 1).replace("-", "", 1).isdigit() for p in value_str.split()):
             try:
@@ -1421,21 +1512,25 @@ class MainWindow(QMainWindow):
                 if len(parts) == 2:
                     value_item = QTableWidgetItem(f"X: {self.formatFloat(float(parts[0]))}, Y: {self.formatFloat(float(parts[1]))}")
                 elif len(parts) == 4:
-                    value_item = QTableWidgetItem(f"X: {self.formatFloat(float(parts[0]))}, Y: {self.formatFloat(float(parts[1]))}, " +
-                                                 f"W: {self.formatFloat(float(parts[2]))}, H: {self.formatFloat(float(parts[3]))}")
+                    if key == "BOUNDS":
+                        value_item = QTableWidgetItem(f"W: {self.formatFloat(float(parts[2]))}, H: {self.formatFloat(float(parts[3]))}")
+                    else:
+                        value_item = QTableWidgetItem(f"X: {self.formatFloat(float(parts[0]))}, Y: {self.formatFloat(float(parts[1]))}, " +
+                                                     f"W: {self.formatFloat(float(parts[2]))}, H: {self.formatFloat(float(parts[3]))}")
                 elif len(parts) == 6:
                     value_item = QTableWidgetItem(f"[{self.formatFloat(float(parts[0]))} {self.formatFloat(float(parts[1]))} " +
                                                  f"{self.formatFloat(float(parts[2]))} {self.formatFloat(float(parts[3]))} " +
                                                  f"{self.formatFloat(float(parts[4]))} {self.formatFloat(float(parts[5]))}]")
                 else:
                     value_item = QTableWidgetItem(self.formatPoint(value_str))
+                self.ui.tableWidget.setItem(row_index, 1, value_item)
             except:
                 value_item = QTableWidgetItem(value_str)
+                self.ui.tableWidget.setItem(row_index, 1, value_item)
                 
         else:
             value_item = QTableWidgetItem(value_str)
-            
-        self.ui.tableWidget.setItem(row_index, 1, value_item)
+            self.ui.tableWidget.setItem(row_index, 1, value_item)
     
     # preview section
     def renderPreview(self, root_layer, target_state=None):
@@ -2593,15 +2688,27 @@ class MainWindow(QMainWindow):
             
         orig_val = getattr(obj, xml_key)
         if isinstance(orig_val, list):
-            nums = re.findall(r'-?\d+\.?\d*', str(val))
-            setattr(obj, xml_key, nums)
+            if xml_key == 'bounds' and len(orig_val) == 4:
+                nums = re.findall(r'-?\d+\.?\d*', str(val))
+                if len(nums) == 2:
+                    orig_val[2] = nums[0]
+                    orig_val[3] = nums[1]
+                    setattr(obj, xml_key, orig_val)
+                else:
+                    setattr(obj, xml_key, nums)
+            else:
+                nums = re.findall(r'-?\d+\.?\d*', str(val))
+                setattr(obj, xml_key, nums)
         else:
             setattr(obj, xml_key, val)
         
         self.ui.tableWidget.blockSignals(False)
         self.markDirty()
         
-        if xml_key in ['position', 'bounds', 'transform', 'opacity', 'backgroundColor', 'cornerRadius']:
+        update_properties = ['position', 'bounds', 'transform', 'opacity', 'backgroundColor', 'cornerRadius',
+                            'string', 'fontSize', 'fontFamily', 'alignmentMode', 'color']
+        
+        if xml_key in update_properties:
             if hasattr(self, 'scene') and self.scene:
                 for item_in_scene in self.scene.items():
                     if hasattr(item_in_scene, "data") and item_in_scene.data(0) == obj.id and item_in_scene.data(1) == "Layer":

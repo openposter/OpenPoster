@@ -34,12 +34,26 @@ class CALayer:
             self.animations = []
 
         if type == "text":
-            self.layer_class="CATextLayer"
-            self.string="Text"
-            # TODO: do this stuff for defaults. cba do it now lol - retron
+            self.layer_class = "CATextLayer"
+            self.string = "Text"
+            self.fontSize = "24"
+            self.fontFamily = "Helvetica"
+            self.alignmentMode = "center"
+            self.color = "255 255 255"
+            self._content = None
+            self.sublayers = {}
+            self._sublayerorder = []
+            self.states = {}
+            self.stateTransitions = []
+            self.animations = []
         elif type == "image":
             self.content = CGImage("image.png")
             self._content = {} # this is required because inspector code looks for it even though it shouldnt pls fix enkei
+            self.sublayers = {}
+            self._sublayerorder = []
+            self.states = {}
+            self.stateTransitions = []
+            self.animations = []
 
         
 
