@@ -31,12 +31,12 @@ StringFileInfo(
     u'040904B0',
     [StringStruct(u'CompanyName', u'OpenPoster'),
     StringStruct(u'FileDescription', u'OpenPoster'),
-    StringStruct(u'FileVersion', u'5.2'),
+    StringStruct(u'FileVersion', u'0.0.4'),
     StringStruct(u'InternalName', u'OpenPoster'),
     StringStruct(u'LegalCopyright', u'Copyright (c) 2025 OpenPoster'),
     StringStruct(u'OriginalFilename', u'OpenPoster.exe'),
     StringStruct(u'ProductName', u'OpenPoster'),
-    StringStruct(u'ProductVersion', u'1.0.0')])
+    StringStruct(u'ProductVersion', u'0.0.4')])
   ]),
 VarFileInfo([VarStruct(u'Translation', [1033, 1200])]) 
   ]
