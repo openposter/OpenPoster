@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <caml xmlns="http://www.apple.com/CoreAnimation/1.0">
-  <CALayer allowsEdgeAntialiasing="1" allowsGroupOpacity="1" bounds="0 0 1170 2532" contentsFormat="RGBA8" cornerCurve="circular" name="Root Layer" position="585 1266"/>
+  <CALayer allowsEdgeAntialiasing="1" allowsGroupOpacity="1" bounds="0 0 1170 2532" contentsFormat="RGBA8" cornerCurve="circular" name="Root Layer" position="585 1266" geometryFlipped="0"/>
 </caml>
