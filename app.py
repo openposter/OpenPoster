@@ -4,7 +4,7 @@ from gui.mainwindow import MainWindow
 # when the imposter is sus
 # from configparser import ConfigParser
 from gui.config_manager import ConfigManager
-from PySide6.QtCore import QTranslator
+from PySide6.QtCore import QTranslator, QProcess
 from PySide6.QtGui import QFileOpenEvent
 from gui.welcome import WelcomeWindow
 from gui.newfile import NewFileDialog
@@ -80,11 +80,9 @@ if __name__ == "__main__":
             action_type = "open"
             break
         if action[0] == "reset":
-            try:
-                os.execl(sys.executable, sys.executable, *sys.argv)
-            except Exception as e:
-                print(f"Failed to restart application: {e}")
-                sys.exit(1)
+            process = QProcess()
+            process.startDetached(sys.executable, sys.argv)
+            sys.exit(0)
         if action[0] == "new":
             newdlg = NewFileDialog()
             newdlg.exec()
