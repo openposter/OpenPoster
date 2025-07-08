@@ -2,6 +2,7 @@ from PySide6.QtCore import QRectF, QPointF, Qt
 from PySide6.QtGui import QTransform
 from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsPixmapItem, QGraphicsTextItem
 from PySide6.QtGui import QPen, QBrush, QColor
+import os
 
 class PreviewRenderer:
     def __init__(self, window):
@@ -151,13 +152,23 @@ class PreviewRenderer:
         elif hasattr(layer, '_content') and layer._content is not None:
             src = getattr(layer.content, 'src', None)
             if src:
+                if hasattr(self.window, 'config_manager'):
+                    self.assets.config_dir = self.window.config_manager.config_dir
+                    self.assets.assets_cache_dir = os.path.join(self.assets.config_dir, 'assets-cache')
+                
                 self.assets.cafilepath = self.window.cafilepath
                 self.assets.cachedImages = self.window.cachedImages
+                
+                print(f"Trying to load image: {src}")
                 pix = self.load_image(src)
                 self.window.cachedImages = self.assets.cachedImages
-                if not pix and src in self.window.missing_assets:
-                    missing_asset = True
-                if pix:
+                
+                if not pix:
+                    print(f"Failed to load image: {src}")
+                    if src in self.window.missing_assets:
+                        missing_asset = True
+                else:
+                    print(f"Successfully loaded image: {src}")
                     pitem = QGraphicsPixmapItem()
                     pitem.setPixmap(pix)
                     sx = bounds.width()/pix.width() if pix.width()>0 else 1
@@ -230,7 +241,7 @@ class PreviewRenderer:
                     item.setSelected(True)
                     self.window.ui.graphicsView.centerOn(item)
         for item in self.scene.items():
-            if hasattr(item,'data') and item.data(0)==layer.id+'_name':
+            if hasattr(item,'data') and layer.id is not None and item.data(0)==layer.id+'_name':
                 item.setDefaultTextColor(QColor(0,120,215))
 
     def highlight_animation(self, layer, animation):

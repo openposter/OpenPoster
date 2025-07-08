@@ -15,6 +15,7 @@ import webbrowser
 import re
 import subprocess
 import tempfile, shutil
+import time
 
 import resources_rc
 from gui._meta import __version__
@@ -101,6 +102,8 @@ class MainWindow(QMainWindow):
         self.applySpringAnimationToItem = self._applyAnimation.applySpringAnimationToItem
 
         self._assets = Assets()
+        self._assets.config_dir = self.config_manager.config_dir
+        self._assets.assets_cache_dir = os.path.join(self._assets.config_dir, 'assets-cache')
         self.findAssetPath = self._assets.findAssetPath
         self.loadImage = self._assets.loadImage
 
@@ -270,10 +273,36 @@ class MainWindow(QMainWindow):
                         new_width = current_height * aspect_ratio
                         
                         layer.bounds[2] = str(new_width)
-            except Exception as e:
-                print(f"Could not resize image based on aspect ratio: {e}")
 
-            layer.content.src = image_path
+                    assets_cache_dir = os.path.join(self.config_manager.config_dir, 'assets-cache')
+                    if not os.path.exists(assets_cache_dir):
+                        os.makedirs(assets_cache_dir)
+
+                    image_filename = os.path.basename(image_path)
+                    dest_path = os.path.join(assets_cache_dir, image_filename)
+
+                    shutil.copy2(image_path, dest_path)
+                    
+                    layer.content.src = f"assets/{image_filename}"
+
+                    if hasattr(self.cafile, 'assets'):
+                        with open(image_path, 'rb') as f:
+                            self.cafile.assets[image_filename] = f.read()
+                            
+                    print(f"Copied image to cache: {dest_path} and set path to assets/{image_filename}")
+
+                    self.cachedImages = {}
+                    if hasattr(self._assets, 'cachedImages'):
+                        self._assets.cachedImages = {}
+            except Exception as e:
+                print(f"Could not process image: {e}")
+
+                try:
+                    image_filename = os.path.basename(image_path)
+                    layer.content.src = f"assets/{image_filename}"
+                    print(f"Error occurred but still using relative path: assets/{image_filename}")
+                except:
+                    layer.content.src = image_path
 
         if hasattr(self, "currentInspectObject"):
             element = self.currentInspectObject
@@ -1985,31 +2014,42 @@ class MainWindow(QMainWindow):
     def _create_tendies_structure(self, base_dir, ca_source_path):
         """Creates the necessary directory structure for a .tendies bundle inside base_dir."""
         try:
-            # Copy descriptors template
-            root = sys._MEIPASS if hasattr(sys, '_MEIPASS') else (os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd())
-            descriptors_src = os.path.join(root, "descriptors")
-            if not os.path.exists(descriptors_src):
-                raise FileNotFoundError("descriptors template directory not found")
+            temp_save_dir = tempfile.mkdtemp()
+            try:
+                ca_basename = os.path.basename(ca_source_path)
+                if not ca_basename:
+                    ca_basename = "export_temp.ca"
                 
-            descriptors_dest = os.path.join(base_dir, "descriptors")
-            shutil.copytree(descriptors_src, descriptors_dest, dirs_exist_ok=True)
+                self.cafile.write_file(ca_basename, temp_save_dir)
+                
+                ca_source_path = os.path.join(temp_save_dir, ca_basename)
+                
+                root = sys._MEIPASS if hasattr(sys, '_MEIPASS') else (os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd())
+                descriptors_src = os.path.join(root, "descriptors")
+                if not os.path.exists(descriptors_src):
+                    raise FileNotFoundError("descriptors template directory not found")
+                    
+                descriptors_dest = os.path.join(base_dir, "descriptors")
+                shutil.copytree(descriptors_src, descriptors_dest, dirs_exist_ok=True)
 
-            # Find the EID directory (assuming only one)
-            eid = next((d for d in os.listdir(descriptors_dest) if os.path.isdir(os.path.join(descriptors_dest, d)) and not d.startswith('.')), None)
-            if not eid:
-                raise FileNotFoundError("Could not find EID directory within descriptors template")
+                eid = next((d for d in os.listdir(descriptors_dest) if os.path.isdir(os.path.join(descriptors_dest, d)) and not d.startswith('.')), None)
+                if not eid:
+                    raise FileNotFoundError("Could not find EID directory within descriptors template")
 
-            # Define the path for the .wallpaper bundle
-            contents_dir = os.path.join(descriptors_dest, eid, "versions", "0", "contents")
-            wallpaper_dir = os.path.join(contents_dir, "OpenPoster.wallpaper")
-            os.makedirs(wallpaper_dir, exist_ok=True)
+                contents_dir = os.path.join(descriptors_dest, eid, "versions", "0", "contents")
+                wallpaper_dir = os.path.join(contents_dir, "OpenPoster.wallpaper")
+                os.makedirs(wallpaper_dir, exist_ok=True)
 
-            # Copy the .ca bundle content into the .wallpaper directory
-            if not os.path.exists(ca_source_path):
-                 raise FileNotFoundError(f".ca source path does not exist: {ca_source_path}")
-            ca_basename = os.path.basename(ca_source_path)
-            ca_dest_dir = os.path.join(wallpaper_dir, ca_basename)
-            shutil.copytree(ca_source_path, ca_dest_dir)
+                if not os.path.exists(ca_source_path):
+                     raise FileNotFoundError(f".ca source path does not exist: {ca_source_path}")
+                
+                ca_dest_dir = os.path.join(wallpaper_dir, ca_basename)
+                shutil.copytree(ca_source_path, ca_dest_dir)
+                print(f"Successfully copied updated .ca content to tendies structure: {ca_dest_dir}")
+                
+            finally:
+                if os.path.exists(temp_save_dir):
+                    shutil.rmtree(temp_save_dir)
             
         except Exception as e:
             print(f"Error creating tendies structure in {base_dir}: {e}")
@@ -2019,8 +2059,13 @@ class MainWindow(QMainWindow):
         self.isDirty = True
 
     def onItemMoved(self, item):
+        if item is None:
+            return
+            
         layer_id = item.data(0)
-        if not layer_id: return
+        if not layer_id: 
+            return
+            
         layer = self.cafile.rootlayer.findlayer(layer_id)
         if layer:
             scene_rect = item.sceneBoundingRect()
@@ -2218,6 +2263,15 @@ class MainWindow(QMainWindow):
         if os.path.exists(export_dir):
             shutil.rmtree(export_dir)
         os.makedirs(export_dir, exist_ok=True)
+
+        self._clear_assets_cache()
+
+    def _clear_assets_cache(self):
+        assets_cache_dir = os.path.join(self.config_manager.config_dir, 'assets-cache')
+        if os.path.exists(assets_cache_dir):
+            shutil.rmtree(assets_cache_dir)
+        os.makedirs(assets_cache_dir, exist_ok=True)
+        return assets_cache_dir
 
     def open_project(self, path):
         if not path or not os.path.exists(path):
