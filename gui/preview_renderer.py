@@ -57,10 +57,20 @@ class PreviewRenderer:
                     self.render_layer(sub, QPointF(0, 0), parent_transform, base_state, target_state)
             return
 
+        try:
+            root_h = float(self.window.cafile.rootlayer.bounds[3])
+        except Exception:
+            root_h = 1000
+
+        is_flipped = getattr(self.window.cafile.rootlayer, 'geometryFlipped', "0") == "1"
+
         pos = QPointF(0, 0)
         if hasattr(layer, 'position') and layer.position:
             try:
-                pos = QPointF(float(layer.position[0]), float(layer.position[1]))
+                y = float(layer.position[1])
+                if not is_flipped:
+                    y = root_h - y
+                pos = QPointF(float(layer.position[0]), y)
             except Exception:
                 pass
 
@@ -77,12 +87,6 @@ class PreviewRenderer:
             transform = transform * self.parse_transform(layer.transform)
 
         anchor = QPointF(0.5, 0.5)
-        if hasattr(layer, 'anchorPoint') and layer.anchorPoint:
-            try:
-                ax, ay = map(float, layer.anchorPoint.split()[:2])
-                anchor = QPointF(ax, ay)
-            except Exception:
-                pass
 
         zpos = float(getattr(layer, 'zPosition', 0) or 0)
         try:
@@ -104,7 +108,7 @@ class PreviewRenderer:
                         key, val = el.keyPath, el.value
                         try:
                             if key == 'position.x': pos.setX(float(val))
-                            elif key == 'position.y': pos.setY(float(val))
+                            elif key == 'position.y': pos.setY(root_h - float(val))
                             elif key == 'transform': transform = self.parse_transform(val) * parent_transform
                             elif key == 'opacity': opacity = float(val)
                             elif key == 'zPosition': zpos = float(val)

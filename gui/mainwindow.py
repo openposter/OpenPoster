@@ -2023,17 +2023,27 @@ class MainWindow(QMainWindow):
         if not layer_id: return
         layer = self.cafile.rootlayer.findlayer(layer_id)
         if layer:
-            pos = item.pos()
-            
             scene_rect = item.sceneBoundingRect()
             w = scene_rect.width()
             h = scene_rect.height()
             
             x0, y0 = (float(b) for b in layer.bounds[:2])
-            
             layer.bounds = [str(x0), str(y0), str(w), str(h)]
 
-            layer.position = [str(pos.x()), str(pos.y())]
+            try:
+                root_h = float(self.cafile.rootlayer.bounds[3])
+            except Exception:
+                root_h = 1000
+
+            center_x = scene_rect.x() + w/2
+            center_y = scene_rect.y() + h/2
+
+            is_flipped = getattr(self.cafile.rootlayer, 'geometryFlipped', "0") == "1"
+
+            if not is_flipped:
+                center_y = root_h - center_y
+
+            layer.position = [str(center_x), str(center_y)]
 
             m11 = item.transform().m11()
             m12 = item.transform().m12()
