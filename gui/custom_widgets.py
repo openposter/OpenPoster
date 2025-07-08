@@ -296,8 +296,7 @@ class EditableGraphicsItem(QObject):
         self.item.setTransform(new_transform)
 
     def handleResize(self, mouse_pos_scene):
-
-
+        
         inv_transform, _ = self.item.transform().inverted()
         mouse_pos_item = inv_transform.map(mouse_pos_scene)
         
@@ -332,6 +331,11 @@ class EditableGraphicsItem(QObject):
         
         x_scale = new_rect.width() / self.originalRect.width()
         y_scale = new_rect.height() / self.originalRect.height()
+        mods = QApplication.keyboardModifiers()
+        if mods & Qt.ShiftModifier and handle in (HandleType.TopLeft, HandleType.TopRight, HandleType.BottomRight, HandleType.BottomLeft):
+            scale = min(x_scale, y_scale)
+            x_scale = scale
+            y_scale = scale
 
         new_transform = QTransform(self.initialItemTransform)
         

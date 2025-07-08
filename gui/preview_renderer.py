@@ -12,6 +12,7 @@ class PreviewRenderer:
         self.load_image = window.loadImage
         self.parse_transform = window.parseTransform
         self.parse_color = window.parseColor
+        self.layer_colors = {}
         self.animations = []
 
     def render_preview(self, root_layer, target_state=None):
@@ -178,8 +179,12 @@ class PreviewRenderer:
             rect.setTransform(transform)
             rect.setZValue(zpos)
             rect.setOpacity(opacity)
-            pen = QPen(QColor(200,200,200,180),1)
-            brush = QBrush(QColor(180,180,180,30))
+            if layer.id not in self.layer_colors:
+                hue = abs(hash(layer.id)) % 360
+                self.layer_colors[layer.id] = QColor.fromHsv(hue, 200, 200)
+            base_color = self.layer_colors[layer.id]
+            pen = QPen(base_color.darker(), 1)
+            brush = QBrush(base_color)
             if layer.id == self.window.cafile.rootlayer.id:
                 pen = QPen(QColor(0,0,0,200),1.5)
                 brush = QBrush(Qt.transparent)

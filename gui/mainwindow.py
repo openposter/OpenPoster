@@ -1057,6 +1057,42 @@ class MainWindow(QMainWindow):
             slider_layout.addWidget(scale_label)
             
             self.ui.tableWidget.setCellWidget(row_index, 1, slider_widget)
+            self.ui.tableWidget.setRowHeight(row_index, int(self.ui.tableWidget.fontMetrics().height() * 3))
+        elif key == "OPACITY":
+            slider_widget = QWidget()
+            slider_layout = QHBoxLayout(slider_widget)
+            slider_layout.setContentsMargins(2, 2, 2, 2)
+            opacity_slider = QSlider(Qt.Horizontal)
+            opacity_slider.setRange(0, 100)
+            try:
+                current_percent = float(value_str)
+            except:
+                current_percent = 100.0
+            opacity_slider.setValue(int(current_percent))
+            opacity_slider.setTickPosition(QSlider.TicksBelow)
+            opacity_slider.setTickInterval(10)
+            opacity_label = QLabel(f"{int(current_percent)}%")
+            def update_opacity_label(v):
+                opacity_label.setText(f"{v}%")
+            update_timer_op = QTimer()
+            update_timer_op.setSingleShot(True)
+            update_timer_op.setInterval(50)
+            def apply_opacity(v):
+                op = v / 100.0
+                if hasattr(self, 'currentInspectObject') and self.currentInspectObject:
+                    layer = self.currentInspectObject
+                    layer.opacity = str(op)
+                    if not update_timer_op.isActive():
+                        update_timer_op.timeout.connect(lambda: self.renderPreview(self.cafile.rootlayer))
+                        update_timer_op.start()
+                    self.markDirty()
+            opacity_slider.valueChanged.connect(update_opacity_label)
+            opacity_slider.valueChanged.connect(lambda v: apply_opacity(v))
+            opacity_slider.sliderReleased.connect(lambda: self.renderPreview(self.cafile.rootlayer))
+            slider_layout.addWidget(opacity_slider)
+            slider_layout.addWidget(opacity_label)
+            self.ui.tableWidget.setCellWidget(row_index, 1, slider_widget)
+            self.ui.tableWidget.setRowHeight(row_index, int(self.ui.tableWidget.fontMetrics().height() * 3))
         elif isinstance(value, bool) or (isinstance(value_str, str) and value_str.lower() in ["yes", "no", "true", "false"]):
             if isinstance(value, bool):
                 display_value = "Yes" if value else "No"
@@ -1069,6 +1105,41 @@ class MainWindow(QMainWindow):
             value_item = QTableWidgetItem(self.formatFloat(value) if isinstance(value, (float)) else str(value))
             self.ui.tableWidget.setItem(row_index, 1, value_item)
             
+        elif key == "BACKGROUND COLOR":
+            widget = QWidget()
+            layout = QHBoxLayout(widget)
+            layout.setContentsMargins(2, 2, 2, 2)
+            line_edit = QLineEdit(value_str)
+            button = QPushButton()
+            button.setFixedSize(20, 20)
+            def update_button(col_str):
+                col = self.parseColor(col_str)
+                if col and isinstance(col, QColor):
+                    if col.alpha() != 255:
+                        css_col = f"rgba({col.red()},{col.green()},{col.blue()},{col.alpha()/255:.2f})"
+                    else:
+                        css_col = col.name()
+                else:
+                    css_col = ''
+                button.setStyleSheet(f"background-color: {css_col}; border: 1px solid black;")
+            update_button(value_str)
+            def pick_color():
+                initial = self.parseColor(line_edit.text())
+                color = QColorDialog.getColor(initial, self, "Select Color")
+                if color.isValid():
+                    col_str = color.name() if color.alpha() == 255 else f"rgba({color.red()},{color.green()},{color.blue()},{color.alpha()/255:.2f})"
+                    line_edit.setText(col_str)
+                    update_button(col_str)
+                    if hasattr(self, 'currentInspectObject'):
+                        layer = self.currentInspectObject
+                        layer.backgroundColor = col_str
+                        self.renderPreview(self.cafile.rootlayer)
+                        self.markDirty()
+            button.clicked.connect(pick_color)
+            layout.addWidget(line_edit)
+            layout.addWidget(button)
+            self.ui.tableWidget.setCellWidget(row_index, 1, widget)
+            self.ui.tableWidget.setRowHeight(row_index, int(self.ui.tableWidget.fontMetrics().height() * 3))
         elif value_str.startswith("#") and (len(value_str) == 7 or len(value_str) == 9):
             try:
                 color = QColor(value_str)
