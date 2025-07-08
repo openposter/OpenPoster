@@ -6,6 +6,7 @@ from PySide6 import QtCore
 from PySide6.QtCore import Qt, QRectF, QPointF, QSize, QEvent, QVariantAnimation, QKeyCombination, QKeyCombination, QTimer, QSettings, QStandardPaths, QDir, QObject, QProcess, QByteArray, QBuffer, QIODevice, QXmlStreamReader, QPoint, QMimeData, QRegularExpression, QTranslator
 from PySide6.QtGui import QPixmap, QImage, QBrush, QPen, QColor, QTransform, QPainter, QLinearGradient, QIcon, QPalette, QFont, QShortcut, QKeySequence, QAction, QCursor, QDesktopServices
 from PySide6.QtWidgets import QFileDialog, QTreeWidgetItem, QMainWindow, QTableWidgetItem, QGraphicsRectItem, QGraphicsPixmapItem, QGraphicsTextItem, QApplication, QHeaderView, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QTreeWidget, QWidget, QGraphicsItemAnimation, QMessageBox, QDialog, QColorDialog, QProgressDialog, QSizePolicy, QSplitter, QFrame, QToolButton, QGraphicsView, QGraphicsScene, QStyleFactory, QSpacerItem, QMenu, QLineEdit, QTableWidget, QTableWidgetItem, QSystemTrayIcon, QGraphicsProxyWidget, QGraphicsDropShadowEffect, QMenu, QTreeWidgetItemIterator, QInputDialog, QSlider, QTextEdit
+from PySide6.QtWidgets import QSpinBox, QAbstractSpinBox
 from ui.ui_mainwindow import Ui_OpenPoster
 from .custom_widgets import CustomGraphicsView, CheckerboardGraphicsScene
 import PySide6.QtCore as QtCore
@@ -1159,10 +1160,69 @@ class MainWindow(QMainWindow):
             try:
                 parts = value_str.split()
                 if len(parts) == 2:
-                    value_item = QTableWidgetItem(f"X: {self.formatFloat(float(parts[0]))}, Y: {self.formatFloat(float(parts[1]))}")
+                    if key == "POSITION":
+                        pos_widget = QWidget()
+                        pos_layout = QHBoxLayout(pos_widget)
+                        pos_layout.setContentsMargins(2, 2, 2, 2)
+                        x_spin = QSpinBox()
+                        x_spin.setRange(-10000, 10000)
+                        x_spin.setValue(int(float(parts[0])))
+                        x_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+                        y_spin = QSpinBox()
+                        y_spin.setRange(-10000, 10000)
+                        y_spin.setValue(int(float(parts[1])))
+                        y_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+                        def on_x_changed(val):
+                            layer = self.currentInspectObject
+                            if layer and hasattr(layer, "position"):
+                                layer.position[0] = str(val)
+                                self.renderPreview(self.cafile.rootlayer)
+                                self.markDirty()
+                        x_spin.valueChanged.connect(on_x_changed)
+                        def on_y_changed(val):
+                            layer = self.currentInspectObject
+                            if layer and hasattr(layer, "position"):
+                                layer.position[1] = str(val)
+                                self.renderPreview(self.cafile.rootlayer)
+                                self.markDirty()
+                        y_spin.valueChanged.connect(on_y_changed)
+                        pos_layout.addWidget(x_spin)
+                        pos_layout.addWidget(y_spin)
+                        self.ui.tableWidget.setCellWidget(row_index, 1, pos_widget)
+                        self.ui.tableWidget.setRowHeight(row_index, int(self.ui.tableWidget.fontMetrics().height() * 2.5))
+                    else:
+                        value_item = QTableWidgetItem(f"X: {self.formatFloat(float(parts[0]))}, Y: {self.formatFloat(float(parts[1]))}")
                 elif len(parts) == 4:
                     if key == "BOUNDS":
-                        value_item = QTableWidgetItem(f"W: {self.formatFloat(float(parts[2]))}, H: {self.formatFloat(float(parts[3]))}")
+                        spin_widget = QWidget()
+                        spin_layout = QHBoxLayout(spin_widget)
+                        spin_layout.setContentsMargins(2, 2, 2, 2)
+                        width_spin = QSpinBox()
+                        width_spin.setRange(1, 10000)
+                        width_spin.setValue(int(float(parts[2])))
+                        width_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+                        height_spin = QSpinBox()
+                        height_spin.setRange(1, 10000)
+                        height_spin.setValue(int(float(parts[3])))
+                        height_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+                        def on_width_changed(val):
+                            layer = self.currentInspectObject
+                            if layer and hasattr(layer, "bounds"):
+                                layer.bounds[2] = str(val)
+                                self.renderPreview(self.cafile.rootlayer)
+                                self.markDirty()
+                        width_spin.valueChanged.connect(on_width_changed)
+                        def on_height_changed(val):
+                            layer = self.currentInspectObject
+                            if layer and hasattr(layer, "bounds"):
+                                layer.bounds[3] = str(val)
+                                self.renderPreview(self.cafile.rootlayer)
+                                self.markDirty()
+                        height_spin.valueChanged.connect(on_height_changed)
+                        spin_layout.addWidget(width_spin)
+                        spin_layout.addWidget(height_spin)
+                        self.ui.tableWidget.setCellWidget(row_index, 1, spin_widget)
+                        self.ui.tableWidget.setRowHeight(row_index, int(self.ui.tableWidget.fontMetrics().height() * 2.5))
                     else:
                         value_item = QTableWidgetItem(f"X: {self.formatFloat(float(parts[0]))}, Y: {self.formatFloat(float(parts[1]))}, " +
                                                      f"W: {self.formatFloat(float(parts[2]))}, H: {self.formatFloat(float(parts[3]))}")
@@ -1990,10 +2050,25 @@ class MainWindow(QMainWindow):
                 if not label:
                     continue
                 key = label.text()
-                if key == 'POSITION':
-                    self.ui.tableWidget.item(r, 1).setText(self.formatPoint(' '.join(layer.position)))
-                elif key == 'BOUNDS':
-                    self.ui.tableWidget.item(r, 1).setText(self.formatPoint(' '.join(layer.bounds)))
+                widget = self.ui.tableWidget.cellWidget(r, 1)
+                if key == 'POSITION' and widget:
+                    x_spin = widget.layout().itemAt(0).widget()
+                    y_spin = widget.layout().itemAt(1).widget()
+                    x_spin.blockSignals(True)
+                    x_spin.setValue(int(float(layer.position[0])))
+                    x_spin.blockSignals(False)
+                    y_spin.blockSignals(True)
+                    y_spin.setValue(int(float(layer.position[1])))
+                    y_spin.blockSignals(False)
+                elif key == 'BOUNDS' and widget:
+                    w_spin = widget.layout().itemAt(0).widget()
+                    h_spin = widget.layout().itemAt(1).widget()
+                    w_spin.blockSignals(True)
+                    w_spin.setValue(int(float(layer.bounds[2])))
+                    w_spin.blockSignals(False)
+                    h_spin.blockSignals(True)
+                    h_spin.setValue(int(float(layer.bounds[3])))
+                    h_spin.blockSignals(False)
                 elif key == 'TRANSFORM' and layer.transform:
                     self.ui.tableWidget.item(r, 1).setText(self.formatPoint(layer.transform))
             self.ui.tableWidget.blockSignals(False)

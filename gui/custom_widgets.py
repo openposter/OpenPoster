@@ -484,9 +484,9 @@ class CheckerboardGraphicsScene(QGraphicsScene):
             event.accept()
         else:
             super(CheckerboardGraphicsScene, self).mouseMoveEvent(event)
-            
             if self.editMode and self.currentEditableItem:
                 self.currentEditableItem.updateBoundingBox()
+                self.currentEditableItem.itemChanged.emit(self.currentEditableItem.item)
 
     def mouseReleaseEvent(self, event):
         """Handle mouse release events for editing"""
