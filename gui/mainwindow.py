@@ -334,9 +334,26 @@ class MainWindow(QMainWindow):
 
         self.ui.openFile.clicked.connect(self.openFile)
         self.ui.treeWidget.currentItemChanged.connect(self.openInInspector)
+        self.ui.treeWidget.setColumnHidden(2, True)
         self.ui.statesTreeWidget.currentItemChanged.connect(self.openStateInInspector)
         self.ui.tableWidget.itemChanged.connect(self.onInspectorChanged)
-        self.ui.tableWidget.verticalHeader().setDefaultSectionSize(self.ui.tableWidget.fontMetrics().height() * 2.5)
+        self.ui.tableWidget.verticalHeader().setDefaultSectionSize(self.ui.tableWidget.fontMetrics().height() * 2.3)
+        table_header = self.ui.tableWidget.horizontalHeader()
+        table_header.setFixedHeight(int(self.ui.tableWidget.fontMetrics().height() * 2.5))
+        for i in range(self.ui.tableWidget.columnCount()):
+            item = self.ui.tableWidget.horizontalHeaderItem(i)
+            if item:
+                item.setTextAlignment(Qt.AlignCenter)
+        tree_header = self.ui.treeWidget.header()
+        tree_header.setFixedHeight(int(self.ui.treeWidget.fontMetrics().height() * 2.3))
+        tree_header_item = self.ui.treeWidget.headerItem()
+        for i in range(self.ui.treeWidget.columnCount()):
+            tree_header_item.setTextAlignment(i, Qt.AlignCenter)
+        states_header = self.ui.statesTreeWidget.header()
+        states_header.setFixedHeight(int(self.ui.statesTreeWidget.fontMetrics().height() * 2.3))
+        states_header_item = self.ui.statesTreeWidget.headerItem()
+        for i in range(self.ui.statesTreeWidget.columnCount()):
+            states_header_item.setTextAlignment(i, Qt.AlignCenter)
         self.ui.filename.mousePressEvent = self.toggleFilenameDisplay
         self.showFullPath = True
         
@@ -954,6 +971,8 @@ class MainWindow(QMainWindow):
         
         self.ui.tableWidget.setItem(row_index, 0, header_item)
         self.ui.tableWidget.setSpan(row_index, 0, 1, 2)
+        header_item.setTextAlignment(Qt.AlignCenter)
+        self.ui.tableWidget.setRowHeight(row_index, int(self.ui.tableWidget.fontMetrics().height() * 2.3))
         
         return row_index + 1
         

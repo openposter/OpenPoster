@@ -85,6 +85,9 @@ QTableWidget#tableWidget QHeaderView::section { background-color:#424242; color:
                 f"QPushButton:hover {{ background-color: rgba(0,0,0,0.1); }}"
                 f"QPushButton:pressed {{ background-color: rgba(0,0,0,0.2); }}"
             )
+        tw = getattr(window.ui, 'tableWidget', None)
+        if tw:
+            tw.setStyleSheet("")
 
     def update_category_headers(self):
         from PySide6.QtGui import QColor
