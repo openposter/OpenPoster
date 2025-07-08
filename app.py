@@ -8,7 +8,7 @@ from PySide6.QtCore import QTranslator
 from PySide6.QtGui import QFileOpenEvent
 from gui.welcome import WelcomeWindow
 from gui.newfile import NewFileDialog
-import os
+import os, shutil
 
 class OpenPosterApplication(QtWidgets.QApplication):
     def __init__(self, *args, **kwargs):
@@ -79,6 +79,12 @@ if __name__ == "__main__":
         if action[0] == "open":
             action_type = "open"
             break
+        if action[0] == "reset":
+            try:
+                os.execl(sys.executable, sys.executable, *sys.argv)
+            except Exception as e:
+                print(f"Failed to restart application: {e}")
+                sys.exit(1)
         if action[0] == "new":
             newdlg = NewFileDialog()
             newdlg.exec()
