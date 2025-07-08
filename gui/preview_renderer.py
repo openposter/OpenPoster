@@ -31,7 +31,7 @@ class PreviewRenderer:
 
         border = QGraphicsRectItem(bounds)
         border.setPen(QPen(QColor(0, 0, 0), 2))
-        border.setBrush(QBrush(Qt.transparent))
+        border.setBrush(QBrush(QColor(255, 255, 255)))
         self.scene.addItem(border)
 
         base_state = None

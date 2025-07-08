@@ -302,8 +302,17 @@ QInputDialog QLabel {
 
 #openFileButton {
     color: #FFFFFF;
+    border: 1px solid #A0A0A0;
 }
 
 #fileNameLabel {
     color: #FFFFFF;
+    border: 1px solid #A0A0A0;
+}
+#openFile {
+    border: 1px solid #A0A0A0;
+}
+#filename {
+    border: 1px solid #A0A0A0;
+    border-radius: 8px;
 } 

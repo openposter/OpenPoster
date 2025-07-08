@@ -34,6 +34,10 @@ class ThemeManager:
                         widget = getattr(window.ui, name, None)
                         if widget:
                             widget.setObjectName(name)
+                    for name in ('openFile', 'filename'):
+                        w = getattr(window.ui, name, None)
+                        if w:
+                            w.setStyleSheet("")
             except Exception as e:
                 print(f"[ThemeManager] Error applying dark QSS: {e}")
         scene = getattr(window, 'scene', None)
@@ -71,6 +75,10 @@ QTableWidget#tableWidget QHeaderView::section { background-color:#424242; color:
                         widget = getattr(window.ui, name, None)
                         if widget:
                             widget.setObjectName(name)
+                    for name in ('openFile', 'filename'):
+                        w = getattr(window.ui, name, None)
+                        if w:
+                            w.setStyleSheet("")
             except Exception as e:
                 print(f"[ThemeManager] Error applying light QSS: {e}")
         scene = getattr(window, 'scene', None)
