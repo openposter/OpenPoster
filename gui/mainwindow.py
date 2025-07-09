@@ -1255,6 +1255,7 @@ class MainWindow(QMainWindow):
                             layer = self.currentInspectObject
                             if layer and hasattr(layer, "bounds"):
                                 layer.bounds[2] = str(val)
+                                self._update_scale_from_bounds(layer)
                                 self.renderPreview(self.cafile.rootlayer)
                                 self.markDirty()
                         width_spin.valueChanged.connect(on_width_changed)
@@ -1262,6 +1263,7 @@ class MainWindow(QMainWindow):
                             layer = self.currentInspectObject
                             if layer and hasattr(layer, "bounds"):
                                 layer.bounds[3] = str(val)
+                                self._update_scale_from_bounds(layer)
                                 self.renderPreview(self.cafile.rootlayer)
                                 self.markDirty()
                         height_spin.valueChanged.connect(on_height_changed)
@@ -2174,6 +2176,7 @@ class MainWindow(QMainWindow):
                     self.renderPreview(self.cafile.rootlayer)
                 elif key == 'BOUNDS':
                     self.currentInspectObject.bounds = value.split(" ")
+                    self._update_scale_from_bounds(self.currentInspectObject)
                     self.renderPreview(self.cafile.rootlayer)
                 elif key == 'ANCHOR POINT':
                     self.currentInspectObject.anchorPoint = value
@@ -2381,3 +2384,29 @@ class MainWindow(QMainWindow):
                 
                 self.renderPreview(self.cafile.rootlayer)
                 self.markDirty()
+
+    def _update_scale_from_bounds(self, layer):
+        """Helper function to update scale_factor based on layer bounds"""
+        if hasattr(layer, 'scale_factor') and layer.id != self.cafile.rootlayer.id:
+            try:
+                root_height = float(self.cafile.rootlayer.bounds[3])
+                layer_height = float(layer.bounds[3])
+                new_scale = layer_height / root_height
+                layer.scale_factor = new_scale
+
+                for row in range(self.ui.tableWidget.rowCount()):
+                    key_item = self.ui.tableWidget.item(row, 0)
+                    if key_item and key_item.text() == "SCALE":
+                        scale_widget = self.ui.tableWidget.cellWidget(row, 1)
+                        if scale_widget:
+                            slider = scale_widget.findChild(QSlider)
+                            label = scale_widget.findChild(QLabel)
+                            if slider and label:
+                                slider.blockSignals(True)
+                                slider.setValue(int(new_scale * 100))
+                                slider.blockSignals(False)
+                                label.setText(f"{int(new_scale * 100)}%")
+                return True
+            except (ValueError, IndexError, ZeroDivisionError, AttributeError) as e:
+                print(f"Error updating scale from bounds: {e}")
+        return False
