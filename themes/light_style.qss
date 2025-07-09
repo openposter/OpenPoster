@@ -5,6 +5,26 @@ QWidget {
     color: #303030;
 }
 
+QPushButton QMenu {
+    background-color: #FFFFFF;
+    border: 1px solid #A0A0A0;
+    border-radius: 8px;
+    color: #303030;
+}
+
+QPushButton QMenu::item {
+    background-color: transparent;
+    color: #303030;
+    padding: 8px 20px;
+    margin: 0px;
+    border-radius: 0px;
+}
+
+QPushButton QMenu::item:selected {
+    background-color: #E0E0E0;
+    color: #000000;
+}
+
 /* All Headers Styling */
 QHeaderView::section {
     background-color: #F0F0F0;

@@ -345,6 +345,7 @@ class SettingsDialog(QDialog):
                 self.config_manager.set_language(lang_code)
                 if hasattr(self.parent_window, 'load_language'):
                     self.parent_window.load_language(lang_code)
+                    self.parent_window.retranslate_ui()
 
     def on_filename_display_changed(self, value):
         self.config_manager.set_filename_display_mode(value)

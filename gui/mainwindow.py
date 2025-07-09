@@ -74,6 +74,23 @@ class MainWindow(QMainWindow):
         
         # print(f"OpenPoster v{__version__} started") # Commented out startup message
 
+    def retranslate_ui(self):
+        self.ui.retranslateUi(self)
+        self.populateLayersTreeWidget()
+        self.populateStatesTreeWidget()
+
+    def load_language(self, lang_code):
+        if hasattr(QApplication.instance(), 'translator'):
+            QApplication.instance().removeTranslator(QApplication.instance().translator)
+
+        translator = QTranslator()
+        if translator.load(f"languages/app_{lang_code}.qm"):
+            QApplication.instance().installTranslator(translator)
+            QApplication.instance().translator = translator
+            self.translator = translator
+        else:
+            print(f"Failed to load translation for {lang_code}")
+
     # app resources
     def initAssetFinder(self):
         if hasattr(sys, '_MEIPASS'):
