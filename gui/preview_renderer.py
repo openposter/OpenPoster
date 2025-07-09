@@ -87,7 +87,17 @@ class PreviewRenderer:
         if hasattr(layer, 'transform') and layer.transform:
             transform = transform * self.parse_transform(layer.transform)
 
-        anchor = QPointF(0.5, 0.5)
+        anchor_str = getattr(layer, 'anchorPoint', "0.5 0.5") or "0.5 0.5"
+        try:
+            anchor_parts = anchor_str.split()
+            anchor = QPointF(float(anchor_parts[0]), float(anchor_parts[1]))
+        except (ValueError, IndexError):
+            anchor = QPointF(0.5, 0.5)
+
+        if is_flipped:
+            qt_anchor = QPointF(anchor.x(), anchor.y())
+        else:
+            qt_anchor = QPointF(anchor.x(), 1.0 - anchor.y())
 
         zpos = float(getattr(layer, 'zPosition', 0) or 0)
         try:
@@ -139,8 +149,19 @@ class PreviewRenderer:
             if hasattr(layer, 'color') and layer.color:
                 c = self.parse_color(layer.color)
                 if c: item.setDefaultTextColor(c)
-            item.setTransformOriginPoint(bounds.width()*anchor.x(), bounds.height()*anchor.y())
-            item.setPos(QPointF(pos.x() - bounds.width()*anchor.x(), pos.y() - bounds.height()*anchor.y()))
+            
+            item_pos = QPointF(
+                pos.x() - bounds.width() * qt_anchor.x(),
+                pos.y() - bounds.height() * qt_anchor.y()
+            )
+
+            transform_origin = QPointF(
+                bounds.width() * qt_anchor.x(),
+                bounds.height() * qt_anchor.y()
+            )
+
+            item.setTransformOriginPoint(transform_origin)
+            item.setPos(item_pos)
             item.setTransform(transform)
             item.setZValue(zpos)
             item.setOpacity(opacity)
@@ -176,8 +197,19 @@ class PreviewRenderer:
                     tf = QTransform().scale(sx, sy)
                     pitem.setTransform(tf*transform)
                     ww, hh = pix.width()*sx, pix.height()*sy
-                    pitem.setTransformOriginPoint(ww*anchor.x(), hh*anchor.y())
-                    pitem.setPos(QPointF(pos.x() - ww*anchor.x(), pos.y() - hh*anchor.y()))
+                    
+                    item_pos = QPointF(
+                        pos.x() - ww * qt_anchor.x(),
+                        pos.y() - hh * qt_anchor.y()
+                    )
+
+                    transform_origin = QPointF(
+                        ww * qt_anchor.x(),
+                        hh * qt_anchor.y()
+                    )
+
+                    pitem.setTransformOriginPoint(transform_origin)
+                    pitem.setPos(item_pos)
                     pitem.setTransformationMode(Qt.SmoothTransformation)
                     pitem.setZValue(zpos)
                     pitem.setOpacity(opacity)
@@ -189,8 +221,19 @@ class PreviewRenderer:
 
         if not has_content:
             rect = QGraphicsRectItem(bounds)
-            rect.setTransformOriginPoint(bounds.width()*anchor.x(), bounds.height()*anchor.y())
-            rect.setPos(QPointF(pos.x() - bounds.width()*anchor.x(), pos.y() - bounds.height()*anchor.y()))
+            
+            item_pos = QPointF(
+                pos.x() - bounds.width() * qt_anchor.x(),
+                pos.y() - bounds.height() * qt_anchor.y()
+            )
+
+            transform_origin = QPointF(
+                bounds.width() * qt_anchor.x(),
+                bounds.height() * qt_anchor.y()
+            )
+
+            rect.setTransformOriginPoint(transform_origin)
+            rect.setPos(item_pos)
             rect.setTransform(transform)
             rect.setZValue(zpos)
             rect.setOpacity(opacity)
