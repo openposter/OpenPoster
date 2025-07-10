@@ -31,6 +31,7 @@ from .settings_window import SettingsDialog
 from .exportoptions_window import ExportOptionsDialog
 from .theme_manager import ThemeManager
 from .preview_renderer import PreviewRenderer
+from .discord_rpc import DiscordRPC
 
 class MainWindow(QMainWindow):
     def __init__(self, config_manager, translator):
@@ -64,6 +65,9 @@ class MainWindow(QMainWindow):
         self.initUI()
         
         self.preview = PreviewRenderer(self)
+        
+        # Discord RPC
+        self.discord_rpc = DiscordRPC()
         
         # Restore window geometry
         self.loadWindowGeometry()
@@ -519,6 +523,7 @@ class MainWindow(QMainWindow):
             self.isDirty = False
             self.ui.addButton.setEnabled(True)
             self.updateFilenameDisplay()
+            self.discord_rpc.start()
         except Exception as e:
             self.create_themed_message_box(
                 QMessageBox.Critical, 
@@ -1942,6 +1947,7 @@ class MainWindow(QMainWindow):
                 return
         self.saveSplitterSizes()
         self.saveWindowGeometry()
+        self.discord_rpc.stop()
         super().closeEvent(event)
 
     def saveFile(self):
