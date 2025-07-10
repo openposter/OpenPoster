@@ -262,6 +262,27 @@ class MainWindow(QMainWindow):
                 print(f"Warning: Could not get root layer bounds to resize new layer: {e}")
                 pass
 
+        parent_layer = None
+        selected_item = self.ui.treeWidget.currentItem()
+
+        if selected_item:
+            item_type = selected_item.text(1)
+            if item_type == "Layer" or item_type == "Root":
+                layer_id = selected_item.text(2)
+                if layer_id:
+                    parent_layer = self.cafile.rootlayer.findlayer(layer_id)
+
+        if not parent_layer:
+            parent_layer = self.cafile.rootlayer
+        
+        if not parent_layer:
+            self.create_themed_message_box(
+                QMessageBox.Critical, 
+                "Error", 
+                "Cannot add a layer. No valid parent layer could be determined."
+            ).exec()
+            return
+        
         if layer_type == "text":
             text, ok = QInputDialog.getText(self, "New Text Layer", "Enter text:", QLineEdit.Normal, getattr(layer, "string", ""))
             if not ok or not text:
@@ -332,12 +353,7 @@ class MainWindow(QMainWindow):
                 except:
                     layer.content.src = image_path
 
-        if hasattr(self, "currentInspectObject"):
-            element = self.currentInspectObject
-        else:
-            element = self.cafile.rootlayer
-
-        element.addlayer(layer)
+        parent_layer.addlayer(layer)
         self.ui.treeWidget.clear()
         self.populateLayersTreeWidget()
         self.renderPreview(self.cafile.rootlayer)
@@ -390,7 +406,6 @@ class MainWindow(QMainWindow):
         self.ui.addButton.setMenu(self.add_menu_ui)
         self.ui.addButton.setEnabled(True)
 
-        self.ui.openFile.clicked.connect(self.openFile)
         self.ui.treeWidget.currentItemChanged.connect(self.openInInspector)
         self.ui.treeWidget.setColumnHidden(2, True)
         self.ui.statesTreeWidget.currentItemChanged.connect(self.openStateInInspector)
@@ -415,6 +430,8 @@ class MainWindow(QMainWindow):
         self.ui.filename.mousePressEvent = self.toggleFilenameDisplay
         self.showFullPath = True
         
+        self.show_inspector_placeholder()
+
         self.scene = CheckerboardGraphicsScene()
         # Initialize animation helper now that scene exists
         from ._applyanimation import ApplyAnimation
@@ -588,16 +605,13 @@ class MainWindow(QMainWindow):
             if hasattr(self.scene, 'currentEditableItem') and self.scene.currentEditableItem:
                 self.scene.currentEditableItem.removeBoundingBox()
                 self.scene.currentEditableItem = None
-            self.ui.tableWidget.blockSignals(True)
-            self.ui.tableWidget.setRowCount(0)
-            self.ui.tableWidget.blockSignals(False)
-            self.currentInspectObject = None
+            self.show_inspector_placeholder()
             return
-        self.ui.tableWidget.blockSignals(True)
-        self.currentInspectObject = None
 
-        self.currentSelectedItem = current
+        self.ui.tableWidget.horizontalHeader().setVisible(True)
+        self.ui.tableWidget.blockSignals(True)
         self.ui.tableWidget.setRowCount(0)
+        
         row_index = 0
 
         element_type = current.text(1)
@@ -2474,3 +2488,18 @@ class MainWindow(QMainWindow):
             except (ValueError, IndexError, ZeroDivisionError, AttributeError) as e:
                 print(f"Error updating scale from bounds: {e}")
         return False
+
+    def show_inspector_placeholder(self):
+        self.ui.tableWidget.blockSignals(True)
+        self.ui.tableWidget.setRowCount(1)
+        
+        placeholder_item = QTableWidgetItem("Select a layer to display properties")
+        placeholder_item.setTextAlignment(Qt.AlignCenter)
+        placeholder_item.setFlags(Qt.ItemIsEnabled)
+
+        self.ui.tableWidget.setItem(0, 0, placeholder_item)
+        self.ui.tableWidget.setSpan(0, 0, 1, self.ui.tableWidget.columnCount())
+        self.ui.tableWidget.horizontalHeader().setVisible(False)
+
+        self.currentInspectObject = None
+        self.ui.tableWidget.blockSignals(False)
