@@ -44,6 +44,10 @@ class PreviewRenderer:
         rect = self.scene.itemsBoundingRect()
         self.scene.setSceneRect(rect)
 
+        for item in self.scene.items():
+            if item.data(1) == 'Layer':
+                self.scene.makeItemEditable(item)
+
         if hasattr(self.animation_helper, 'animations'):
             self.animations = list(self.animation_helper.animations)
         return self.animations

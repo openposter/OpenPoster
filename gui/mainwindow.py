@@ -2212,6 +2212,7 @@ class MainWindow(QMainWindow):
         self.markDirty()
 
     def onTransformChanged(self, item):
+        self.onItemMoved(item)
         self.markDirty()
 
     def onInspectorChanged(self, item):
