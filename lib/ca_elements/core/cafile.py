@@ -1,6 +1,7 @@
 import xml.etree.ElementTree as ET
 import os.path
 import plistlib
+import xml.dom.minidom as minidom
 
 from .calayer import CALayer
 
@@ -57,4 +58,11 @@ class CAFile:
             for key, val in list(elem.attrib.items()):
                 if val is None:
                     elem.attrib.pop(key)
-        tree.write(os.path.join(capath, self.index['rootDocument']))
+        
+        xml_str = ET.tostring(tree.getroot(), encoding='utf-8')
+
+        dom = minidom.parseString(xml_str)
+        formatted_xml_bytes = dom.toprettyxml(indent="  ", encoding="UTF-8")
+        
+        with open(os.path.join(capath, self.index['rootDocument']), 'wb') as f:
+            f.write(formatted_xml_bytes)
