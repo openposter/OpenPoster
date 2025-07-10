@@ -18,14 +18,18 @@ class HandleType:
 class ResizeHandle(QGraphicsRectItem):
     """Visual handle for resizing operations"""
     def __init__(self, handle_type, parent=None):
-        super().__init__(parent)
+        super().__init__(-10, -10, 20, 20, parent)
         self.handle_type = handle_type
-        self.setRect(-4, -4, 8, 8)
-        self.setBrush(QBrush(QColor(100, 150, 255)))
-        self.setPen(QPen(QColor(50, 100, 200), 1))
+
+        self.visual_rect = QRectF(-4, -4, 8, 8)
+
+        self.setBrush(Qt.NoBrush)
+        self.setPen(Qt.NoPen)
+
         self.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
         self.setFlag(QGraphicsItem.ItemIsMovable, False)
         self.setFlag(QGraphicsItem.ItemSendsScenePositionChanges, True)
+        self.setAcceptHoverEvents(True)
         
         cursor_map = {
             HandleType.TopLeft: Qt.SizeFDiagCursor,
@@ -38,7 +42,28 @@ class ResizeHandle(QGraphicsRectItem):
             HandleType.Left: Qt.SizeHorCursor,
             HandleType.Rotation: Qt.PointingHandCursor
         }
-        self.setCursor(cursor_map.get(handle_type, Qt.ArrowCursor))
+        self.handle_cursor = QCursor(cursor_map.get(handle_type, Qt.ArrowCursor))
+
+    def paint(self, painter, option, widget):
+        painter.setBrush(QBrush(QColor(100, 150, 255)))
+        painter.setPen(QPen(QColor(50, 100, 200), 1))
+        painter.drawRect(self.visual_rect)
+
+    def hoverMoveEvent(self, event):
+        if self.visual_rect.contains(event.pos()):
+            self.setCursor(self.handle_cursor)
+        else:
+            self.unsetCursor()
+        super().hoverMoveEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        self.unsetCursor()
+        super().hoverLeaveEvent(event)
+
+    def shape(self):
+        path = QPainterPath()
+        path.addRect(self.rect())
+        return path
 
 class EditableGraphicsItem(QObject):
     """A wrapper class that adds editing capabilities to QGraphicsItems"""
