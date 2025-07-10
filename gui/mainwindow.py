@@ -236,21 +236,24 @@ class MainWindow(QMainWindow):
                 root_bounds = [float(b) for b in root_layer.bounds]
                 root_width = root_bounds[2]
                 root_height = root_bounds[3]
-
-                new_height = root_height * 0.3
                 
-                if root_height > 0:
-                    aspect_ratio = root_width / root_height
-                    new_width = new_height * aspect_ratio
-                else:
-                    new_width = root_width * 0.3
-
                 center_x = root_width / 2
                 center_y = root_height / 2
+                
+                if layer_type != "text":
+                    new_height = root_height * 0.3
+                    
+                    if root_height > 0:
+                        aspect_ratio = root_width / root_height
+                        new_width = new_height * aspect_ratio
+                    else:
+                        new_width = root_width * 0.3
+                    
+                    layer.bounds = ['0', '0', str(new_width), str(new_height)]
+                    layer.scale_factor = 0.3
 
-                layer.bounds = ['0', '0', str(new_width), str(new_height)]
                 layer.position = [str(center_x), str(center_y)]
-                layer.scale_factor = 0.3
+                
             except (ValueError, IndexError) as e:
                 print(f"Warning: Could not get root layer bounds to resize new layer: {e}")
                 pass
@@ -261,10 +264,6 @@ class MainWindow(QMainWindow):
                 return
             layer.string = text
             
-            if not hasattr(layer, "fontSize") or not layer.fontSize:
-                root_height = float(root_layer.bounds[3])
-                default_font_size = int(root_height * 0.05 * 2)
-                layer.fontSize = str(default_font_size)
             if not hasattr(layer, "fontFamily") or not layer.fontFamily:
                 layer.fontFamily = "Helvetica"
             if not hasattr(layer, "alignmentMode") or not layer.alignmentMode:
@@ -272,6 +271,14 @@ class MainWindow(QMainWindow):
             if not hasattr(layer, "color") or not layer.color:
                 layer.color = "255 255 255"
                 
+            default_font_size = 24
+            if not hasattr(layer, "fontSize") or not layer.fontSize:
+                layer.fontSize = str(default_font_size)
+                
+            text_width = len(text) * default_font_size * 0.6
+            text_height = default_font_size * 1.2
+            layer.bounds = ['0', '0', str(text_width), str(text_height)]
+            layer.layer_class = "CATextLayer"
         elif layer_type == "image":
             image_path, _ = QFileDialog.getOpenFileName(self, "Select Image File", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)")
             if not image_path:
@@ -961,6 +968,30 @@ class MainWindow(QMainWindow):
                     if hasattr(element, "tracking") and element.tracking:
                         self.add_inspector_row("TRACKING", self.formatFloat(element.tracking), row_index)
                         row_index += 1
+                    
+                    if hasattr(element, "leading") and element.leading:
+                        self.add_inspector_row("LEADING", self.formatFloat(element.leading), row_index)
+                        row_index += 1
+                    
+                    if hasattr(element, "verticalAlignmentMode") and element.verticalAlignmentMode:
+                        self.add_inspector_row("VERTICAL ALIGNMENT", element.verticalAlignmentMode, row_index)
+                        row_index += 1
+                    
+                    if hasattr(element, "resizingMode") and element.resizingMode:
+                        self.add_inspector_row("RESIZING MODE", element.resizingMode, row_index)
+                        row_index += 1
+                    
+                    if hasattr(element, "allowsEdgeAntialiasing"):
+                        self.add_inspector_row("EDGE ANTIALIASING", "Yes" if element.allowsEdgeAntialiasing else "No", row_index)
+                        row_index += 1
+                    
+                    if hasattr(element, "allowsGroupOpacity"):
+                        self.add_inspector_row("GROUP OPACITY", "Yes" if element.allowsGroupOpacity else "No", row_index)
+                        row_index += 1
+                    
+                    if hasattr(element, "classIfAvailable") and element.classIfAvailable:
+                        self.add_inspector_row("CLASS IF AVAILABLE", element.classIfAvailable, row_index)
+                        row_index += 1
                 
                 relationships_properties = False
                 if (hasattr(element, "states") and element.states) or \
@@ -1070,11 +1101,22 @@ class MainWindow(QMainWindow):
                             is_text_layer = hasattr(layer, "layer_class") and layer.layer_class == "CATextLayer"
                             
                             if is_text_layer:
-                                base_font_size = root_height * 0.05
-                                new_font_size = base_font_size * scale_factor
-                                
                                 if hasattr(layer, "fontSize"):
-                                    layer.fontSize = str(int(new_font_size))
+                                    if hasattr(layer, "original_font_size"):
+                                        original_font_size = float(layer.original_font_size)
+                                    else:
+                                        original_font_size = float(layer.fontSize)
+                                        layer.original_font_size = original_font_size
+
+                                    new_font_size = original_font_size * scale_factor
+                                    layer.fontSize = str(int(max(1, new_font_size)))
+
+                                    if hasattr(layer, "string") and layer.string:
+                                        text = layer.string
+                                        text_width = len(text) * new_font_size * 0.6
+                                        text_height = new_font_size * 1.2
+                                        layer.bounds[2] = str(text_width)
+                                        layer.bounds[3] = str(text_height)
                             else:
                                 target_height = root_height * scale_factor
                                 
@@ -1152,13 +1194,14 @@ class MainWindow(QMainWindow):
             value_item = QTableWidgetItem(self.formatFloat(value) if isinstance(value, (float)) else str(value))
             self.ui.tableWidget.setItem(row_index, 1, value_item)
             
-        elif key == "BACKGROUND COLOR":
+        elif key == "BACKGROUND COLOR" or key == "COLOR":
             widget = QWidget()
             layout = QHBoxLayout(widget)
             layout.setContentsMargins(2, 2, 2, 2)
             line_edit = QLineEdit(value_str)
             button = QPushButton()
             button.setFixedSize(20, 20)
+            
             def update_button(col_str):
                 col = self.parseColor(col_str)
                 if col and isinstance(col, QColor):
@@ -1169,20 +1212,34 @@ class MainWindow(QMainWindow):
                 else:
                     css_col = ''
                 button.setStyleSheet(f"background-color: {css_col}; border: 1px solid black;")
+            
             update_button(value_str)
+            
+            def apply_color_change(col_str):
+                if hasattr(self, 'currentInspectObject'):
+                    layer = self.currentInspectObject
+                    if key == "BACKGROUND COLOR":
+                        layer.backgroundColor = col_str
+                    elif key == "COLOR":
+                        layer.color = col_str
+                    update_button(col_str)
+                    self.renderPreview(self.cafile.rootlayer)
+                    self.markDirty()
+
+            def on_text_changed():
+                apply_color_change(line_edit.text())
+
             def pick_color():
                 initial = self.parseColor(line_edit.text())
                 color = QColorDialog.getColor(initial, self, "Select Color")
                 if color.isValid():
                     col_str = color.name() if color.alpha() == 255 else f"rgba({color.red()},{color.green()},{color.blue()},{color.alpha()/255:.2f})"
                     line_edit.setText(col_str)
-                    update_button(col_str)
-                    if hasattr(self, 'currentInspectObject'):
-                        layer = self.currentInspectObject
-                        layer.backgroundColor = col_str
-                        self.renderPreview(self.cafile.rootlayer)
-                        self.markDirty()
+                    apply_color_change(col_str)
+
             button.clicked.connect(pick_color)
+            line_edit.editingFinished.connect(on_text_changed)
+            
             layout.addWidget(line_edit)
             layout.addWidget(button)
             self.ui.tableWidget.setCellWidget(row_index, 1, widget)
