@@ -1849,10 +1849,9 @@ class MainWindow(QMainWindow):
         settings_shortcut.activated.connect(self.showSettingsDialog)
         self.shortcuts_list.append(settings_shortcut)
 
-        # Standard shortcut for opening a file
-        open_file_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.Open), self)
-        open_file_shortcut.activated.connect(self.openFile)
-        self.shortcuts_list.append(open_file_shortcut)
+        save_file_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.Save), self)
+        save_file_shortcut.activated.connect(self.saveFile)
+        self.shortcuts_list.append(save_file_shortcut)
 
         export_shortcut_str = self.config_manager.get_export_shortcut()
         if export_shortcut_str:

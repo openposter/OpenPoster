@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QWidget, QGraphicsOpacityEffect, QMessageBox
 from PySide6.QtGui import QIcon, QPixmap, QFont
 from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QSequentialAnimationGroup, QEasingCurve, QParallelAnimationGroup
+from PySide6.QtGui import QShortcut, QKeySequence
 from .config_manager import ConfigManager
 import os, sys, shutil
 
@@ -69,6 +70,13 @@ class WelcomeWindow(QDialog):
         self.btn_new.clicked.connect(self.on_new)
         self.btn_open.clicked.connect(self.on_open)
         self.result = None
+
+        # keyboard shortcuts only on welcome screen
+        new_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.New), self)
+        new_shortcut.activated.connect(self.on_new)
+
+        open_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.Open), self)
+        open_shortcut.activated.connect(self.on_open)
 
         self.setup_animations()
 
