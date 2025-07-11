@@ -1,6 +1,6 @@
 from PySide6.QtCore import Qt, QPointF, QRectF, Signal, QObject, QTimer, QEvent
 from PySide6.QtGui import QColor, QPen, QBrush, QTransform, QCursor, QPainterPath, QPainter
-from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsItem, QGraphicsPathItem, QApplication, QStyleOptionGraphicsItem, QWidget, QGraphicsTextItem
+from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsItem, QGraphicsPathItem, QApplication, QStyleOptionGraphicsItem, QWidget, QGraphicsTextItem, QGraphicsPixmapItem
 import math
 import platform
 
@@ -18,14 +18,18 @@ class HandleType:
 class ResizeHandle(QGraphicsRectItem):
     """Visual handle for resizing operations"""
     def __init__(self, handle_type, parent=None):
-        super().__init__(parent)
+        super().__init__(-10, -10, 20, 20, parent)
         self.handle_type = handle_type
-        self.setRect(-4, -4, 8, 8)
-        self.setBrush(QBrush(QColor(100, 150, 255)))
-        self.setPen(QPen(QColor(50, 100, 200), 1))
+
+        self.visual_rect = QRectF(-4, -4, 8, 8)
+
+        self.setBrush(Qt.NoBrush)
+        self.setPen(Qt.NoPen)
+
         self.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
         self.setFlag(QGraphicsItem.ItemIsMovable, False)
         self.setFlag(QGraphicsItem.ItemSendsScenePositionChanges, True)
+        self.setAcceptHoverEvents(True)
         
         cursor_map = {
             HandleType.TopLeft: Qt.SizeFDiagCursor,
@@ -38,7 +42,28 @@ class ResizeHandle(QGraphicsRectItem):
             HandleType.Left: Qt.SizeHorCursor,
             HandleType.Rotation: Qt.PointingHandCursor
         }
-        self.setCursor(cursor_map.get(handle_type, Qt.ArrowCursor))
+        self.handle_cursor = QCursor(cursor_map.get(handle_type, Qt.ArrowCursor))
+
+    def paint(self, painter, option, widget):
+        painter.setBrush(QBrush(QColor(100, 150, 255)))
+        painter.setPen(QPen(QColor(50, 100, 200), 1))
+        painter.drawRect(self.visual_rect)
+
+    def hoverMoveEvent(self, event):
+        if self.visual_rect.contains(event.pos()):
+            self.setCursor(self.handle_cursor)
+        else:
+            self.unsetCursor()
+        super().hoverMoveEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        self.unsetCursor()
+        super().hoverLeaveEvent(event)
+
+    def shape(self):
+        path = QPainterPath()
+        path.addRect(self.rect())
+        return path
 
 class EditableGraphicsItem(QObject):
     """A wrapper class that adds editing capabilities to QGraphicsItems"""
@@ -243,15 +268,16 @@ class EditableGraphicsItem(QObject):
     
     def startEdit(self, handle_type, handle_pos):
         """Start edit operation (resize or rotate)"""
-        self.isEditing = True
         self.currentHandle = handle_type
+        self.isEditing = True
         self.initialClickPos = handle_pos
         self.initialItemPos = self.item.pos()
-        self.initialItemTransform = QTransform(self.item.transform())
         self.initialBoundingRect = self.item.boundingRect()
+        self.initialItemTransform = QTransform(self.item.transform())
+        self.initialSceneTransform = self.item.sceneTransform()
+        self.initialRotation = self.getItemRotation()
         
         if handle_type == HandleType.Rotation:
-            self.initialRotation = self.getItemRotation()
             center = self.item.mapToScene(self.initialBoundingRect.center())
             dx = handle_pos.x() - center.x()
             dy = handle_pos.y() - center.y()
@@ -266,10 +292,9 @@ class EditableGraphicsItem(QObject):
             self.original_path_at_drag_start = self.item.path()
     
     def handleEditOperation(self, new_pos):
-        """Handle move, resize, or rotate operations"""
-        if not self.isEditing or not self.currentHandle:
+        if self.currentHandle is None:
             return
-            
+
         if self.currentHandle == HandleType.Rotation:
             self.handleRotation(new_pos)
         else:
@@ -279,92 +304,82 @@ class EditableGraphicsItem(QObject):
         self.itemChanged.emit(self.item)
     
     def handleRotation(self, mouse_pos):
-        """Handle rotation logic"""
-        center = self.item.mapToScene(self.initialBoundingRect.center())
-        dx = mouse_pos.x() - center.x()
-        dy = mouse_pos.y() - center.y()
-        current_angle_rad = math.atan2(dy, dx)
-        current_angle_deg = math.degrees(current_angle_rad)
+        center_scene = self.item.mapToScene(self.item.boundingRect().center())
         
-        rotation_delta = current_angle_deg - self.initialAngle
+        initial_vec = self.initialClickPos - center_scene
+        current_vec = mouse_pos - center_scene
         
-        new_transform = QTransform(self.initialItemTransform)
-        new_transform.translate(self.initialBoundingRect.center().x(), self.initialBoundingRect.center().y())
-        new_transform.rotate(rotation_delta)
-        new_transform.translate(-self.initialBoundingRect.center().x(), -self.initialBoundingRect.center().y())
+        angle_delta = math.degrees(math.atan2(current_vec.y(), current_vec.x())) - math.degrees(math.atan2(initial_vec.y(), initial_vec.x()))
         
-        self.item.setTransform(new_transform)
+        transform = QTransform(self.initialItemTransform)
+
+        rotation_center = self.item.boundingRect().center()
+
+        transform.translate(rotation_center.x(), rotation_center.y())
+        transform.rotate(angle_delta)
+        transform.translate(-rotation_center.x(), -rotation_center.y())
+        
+        self.item.setTransform(transform)
 
     def handleResize(self, mouse_pos_scene):
-
-
-        inv_transform, _ = self.item.transform().inverted()
-        mouse_pos_item = inv_transform.map(mouse_pos_scene)
-        
-        initial_click_item = inv_transform.map(self.initialClickPos)
-
-        new_rect = QRectF(self.originalRect)
-        delta = mouse_pos_item - initial_click_item
-        
-        handle = self.currentHandle
-
-        if handle == HandleType.TopLeft:
-            new_rect.setTopLeft(self.originalRect.topLeft() + delta)
-        elif handle == HandleType.Top:
-            new_rect.setTop(self.originalRect.top() + delta.y())
-        elif handle == HandleType.TopRight:
-            new_rect.setTopRight(self.originalRect.topRight() + delta)
-        elif handle == HandleType.Right:
-            new_rect.setRight(self.originalRect.right() + delta.x())
-        elif handle == HandleType.BottomRight:
-            new_rect.setBottomRight(self.originalRect.bottomRight() + delta)
-        elif handle == HandleType.Bottom:
-            new_rect.setBottom(self.originalRect.bottom() + delta.y())
-        elif handle == HandleType.BottomLeft:
-            new_rect.setBottomLeft(self.originalRect.bottomLeft() + delta)
-        elif handle == HandleType.Left:
-            new_rect.setLeft(self.originalRect.left() + delta.x())
-
-        if new_rect.width() < 1:
-            new_rect.setWidth(1)
-        if new_rect.height() < 1:
-            new_rect.setHeight(1)
-        
-        x_scale = new_rect.width() / self.originalRect.width()
-        y_scale = new_rect.height() / self.originalRect.height()
-
         new_transform = QTransform(self.initialItemTransform)
-        
-        center = QPointF()
-        if handle == HandleType.BottomRight:
-            center = self.originalRect.topLeft()
-        elif handle == HandleType.TopLeft:
-            center = self.originalRect.bottomRight()
-        elif handle == HandleType.TopRight:
-            center = self.originalRect.bottomLeft()
-        elif handle == HandleType.BottomLeft:
-            center = self.originalRect.topRight()
-        elif handle == HandleType.Top:
-            center = self.originalRect.bottomLeft()
-        elif handle == HandleType.Bottom:
-            center = self.originalRect.topLeft()
-        elif handle == HandleType.Left:
-            center = self.originalRect.topRight()
-        elif handle == HandleType.Right:
-            center = self.originalRect.topLeft()
 
-        new_transform.translate(center.x(), center.y())
-        new_transform.scale(x_scale, y_scale)
-        new_transform.translate(-center.x(), -center.y())
+        inv_initial_transform, _ = self.initialSceneTransform.inverted()
         
+        initial_local_pos = inv_initial_transform.map(self.initialClickPos)
+        current_local_pos = inv_initial_transform.map(mouse_pos_scene)
+        
+        delta = current_local_pos - initial_local_pos
+
+        scale_x = 1.0
+        scale_y = 1.0
+        
+        current_w = self.initialBoundingRect.width()
+        current_h = self.initialBoundingRect.height()
+
+        if self.currentHandle in [HandleType.TopLeft, HandleType.Left, HandleType.BottomLeft]:
+            if current_w - delta.x() > 0:
+                scale_x = (current_w - delta.x()) / current_w
+        elif self.currentHandle in [HandleType.TopRight, HandleType.Right, HandleType.BottomRight]:
+            if current_w + delta.x() > 0:
+                scale_x = (current_w + delta.x()) / current_w
+
+        if self.currentHandle in [HandleType.TopLeft, HandleType.Top, HandleType.TopRight]:
+            if current_h - delta.y() > 0:
+                scale_y = (current_h - delta.y()) / current_h
+        elif self.currentHandle in [HandleType.BottomLeft, HandleType.Bottom, HandleType.BottomRight]:
+            if current_h + delta.y() > 0:
+                scale_y = (current_h + delta.y()) / current_h
+
+        anchor_point = QPointF()
+        if self.currentHandle == HandleType.TopLeft:
+            anchor_point = self.initialBoundingRect.bottomRight()
+        elif self.currentHandle == HandleType.Top:
+            anchor_point = QPointF(self.initialBoundingRect.center().x(), self.initialBoundingRect.bottom())
+        elif self.currentHandle == HandleType.TopRight:
+            anchor_point = self.initialBoundingRect.bottomLeft()
+        elif self.currentHandle == HandleType.Right:
+            anchor_point = QPointF(self.initialBoundingRect.left(), self.initialBoundingRect.center().y())
+        elif self.currentHandle == HandleType.BottomRight:
+            anchor_point = self.initialBoundingRect.topLeft()
+        elif self.currentHandle == HandleType.Bottom:
+            anchor_point = QPointF(self.initialBoundingRect.center().x(), self.initialBoundingRect.top())
+        elif self.currentHandle == HandleType.BottomLeft:
+            anchor_point = self.initialBoundingRect.topRight()
+        elif self.currentHandle == HandleType.Left:
+            anchor_point = QPointF(self.initialBoundingRect.right(), self.initialBoundingRect.center().y())
+
+        new_transform.translate(anchor_point.x(), anchor_point.y())
+        new_transform.scale(scale_x, scale_y)
+        new_transform.translate(-anchor_point.x(), -anchor_point.y())
+
         self.item.setTransform(new_transform)
 
     def endEdit(self):
-        if self.isEditing:
-            self.isEditing = False
-            self.currentHandle = None
-            self.itemChanged.emit(self.item)
-            self.editFinished.emit(self.item)
+        self.isEditing = False
+        self.currentHandle = None
+        self.itemChanged.emit(self.item)
+        self.editFinished.emit(self.item)
     
     def getItemRotation(self):
         transform = self.item.transform()
@@ -442,103 +457,78 @@ class CheckerboardGraphicsScene(QGraphicsScene):
         return self.editableItems[item]
 
     def mousePressEvent(self, event):
-        """Handle mouse press events for editing"""
-        if not self.editMode:
-            super().mousePressEvent(event)
+        handle = self.getHandleAt(event.scenePos())
+        if handle and self.currentEditableItem:
+            self.currentEditableItem.startEdit(handle.handle_type, event.scenePos())
+            self.isDragging = True
+            event.accept()
             return
 
-        item_at_pos = self.itemAt(event.scenePos(), QTransform())
-        
-        if item_at_pos and isinstance(item_at_pos, QGraphicsTextItem) and item_at_pos.data(0) and str(item_at_pos.data(0)).endswith("_name"):
-             if item_at_pos.parentItem():
-                 item_at_pos = item_at_pos.parentItem()
-
-        if item_at_pos and isinstance(item_at_pos, ResizeHandle):
-            parent_item = item_at_pos.parentItem()
-            if parent_item in self.editableItems:
-                editable_item = self.editableItems[parent_item]
-                editable_item.startEdit(item_at_pos.handle_type, event.scenePos())
-                self.currentEditableItem = editable_item
-                self.isDragging = True
-                event.accept()
-                return
-
-        is_layer = item_at_pos and hasattr(item_at_pos, 'data') and item_at_pos.data(1) == "Layer"
-        if is_layer:
-            self.selectItem(item_at_pos)
-            super().mousePressEvent(event)
-            return
-
-        self.deselectAllItems()
         super().mousePressEvent(event)
 
+        items_at_pos = self.items(event.scenePos())
+        top_item = next((item for item in items_at_pos if item.data(1) == "Layer" and item.flags() & QGraphicsItem.ItemIsSelectable), None)
+
+        if top_item:
+            if not self.currentEditableItem or self.currentEditableItem.item != top_item:
+                self.selectItem(top_item)
+        elif not event.isAccepted():
+            self.deselectAllItems()
+
+    def getHandleAt(self, pos):
+        if not self.currentEditableItem:
+            return None
+        items_at_pos = self.items(pos)
+        for item in items_at_pos:
+            if isinstance(item, ResizeHandle):
+                return item
+        return None
+
     def mouseMoveEvent(self, event):
-        """Handle mouse move events for editing"""
-        if self.editMode and self.isDragging and self.currentEditableItem:
-            print(f"Dragging in scene: pos={event.scenePos()}, dragging={self.isDragging}")
+        if self.isDragging and self.currentEditableItem:
             self.currentEditableItem.handleEditOperation(event.scenePos())
+            self.onItemChanged(self.currentEditableItem.item)
             event.accept()
         else:
-            super(CheckerboardGraphicsScene, self).mouseMoveEvent(event)
-            
-            if self.editMode and self.currentEditableItem:
-                self.currentEditableItem.updateBoundingBox()
+            super().mouseMoveEvent(event)
+            if self.currentEditableItem and event.buttons() & Qt.LeftButton:
+                self.currentEditableItem.itemChanged.emit(self.currentEditableItem.item)
 
     def mouseReleaseEvent(self, event):
-        """Handle mouse release events for editing"""
-        if self.editMode and self.isDragging and self.currentEditableItem:
+        if self.isDragging and self.currentEditableItem:
             self.currentEditableItem.endEdit()
             self.isDragging = False
             event.accept()
-            print(f"Edit ended, isDragging={self.isDragging}")
         else:
-            super(CheckerboardGraphicsScene, self).mouseReleaseEvent(event)
-        
-        if self.editMode and self.currentEditableItem:
-            self.currentEditableItem.updateBoundingBox()
-    
+            super().mouseReleaseEvent(event)
+            if self.currentEditableItem:
+                self.currentEditableItem.editFinished.emit(self.currentEditableItem.item)
+
     def selectItem(self, item):
-        """Select an item for editing and show its bounding box."""
-        if self.currentEditableItem and self.currentEditableItem.item == item:
+        if self.isItemDeleted(item):
             return
-        self.deselectAllItems()
-        
-        if not self.isItemDeleted(item):
-            try:
-                if item not in self.editableItems:
-                    self.makeItemEditable(item)
 
-                editable_item = self.editableItems[item]
-                editable_item.setupBoundingBox()
-                self.currentEditableItem = editable_item
-
+        if self.currentEditableItem and self.currentEditableItem.item != item:
+            self.deselectAllItems()
+            
+        if not self.currentEditableItem or self.currentEditableItem.item != item:
+            self.currentEditableItem = self.makeItemEditable(item)
+            if self.currentEditableItem:
+                self.currentEditableItem.item.setSelected(True)
+                self.currentEditableItem.setupBoundingBox()
                 layer_id = item.data(0)
                 if layer_id:
-                    self.itemSelectedOnCanvas.emit(str(layer_id))
-            except (RuntimeError, AttributeError):
-                if item in self.editableItems:
-                    del self.editableItems[item]
-
-    def deselectAllItems(self):
-        """Deselect all items"""
-        items_to_cleanup = []
-        for item, editable_item in self.editableItems.items():
-            try:
-                if not self.isItemDeleted(item):
-                    editable_item.removeBoundingBox()
-                else:
-                    items_to_cleanup.append(item)
-            except (RuntimeError, AttributeError):
-                items_to_cleanup.append(item)
-        
-        for item in items_to_cleanup:
-            if item in self.editableItems:
-                del self.editableItems[item]
+                    self.itemSelectedOnCanvas.emit(layer_id)
+            else:
+                self.deselectAllItems()
                 
+    def deselectAllItems(self):
+        if self.currentEditableItem and not self.isItemDeleted(self.currentEditableItem.item):
+            self.currentEditableItem.removeBoundingBox()
+            self.currentEditableItem.item.setSelected(False)
         self.currentEditableItem = None
-    
+
     def isItemDeleted(self, item):
-        """Check if a QGraphicsItem has been deleted by Qt"""
         try:
             _ = item.pos()
             return False

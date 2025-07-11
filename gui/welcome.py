@@ -1,6 +1,9 @@
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QWidget, QGraphicsOpacityEffect
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QWidget, QGraphicsOpacityEffect, QMessageBox
 from PySide6.QtGui import QIcon, QPixmap, QFont
 from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QSequentialAnimationGroup, QEasingCurve, QParallelAnimationGroup
+from PySide6.QtGui import QShortcut, QKeySequence
+from .config_manager import ConfigManager
+import os, sys, shutil
 
 class WelcomeWindow(QDialog):
     def __init__(self, parent=None):
@@ -21,6 +24,9 @@ class WelcomeWindow(QDialog):
         icon = QIcon(":/assets/openposter.png")
         pixmap = icon.pixmap(QSize(128, 128))
         self.icon_label.setPixmap(pixmap)
+
+        self.logo_clicks = 0
+        self.icon_label.mousePressEvent = self.logo_clicked
 
         self.title_label = QLabel("Welcome to OpenPoster")
         title_font = self.title_label.font()
@@ -65,7 +71,44 @@ class WelcomeWindow(QDialog):
         self.btn_open.clicked.connect(self.on_open)
         self.result = None
 
+        # keyboard shortcuts only on welcome screen
+        new_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.New), self)
+        new_shortcut.activated.connect(self.on_new)
+
+        open_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.Open), self)
+        open_shortcut.activated.connect(self.on_open)
+
         self.setup_animations()
+
+    def logo_clicked(self, event):
+        self.logo_clicks += 1
+        if self.logo_clicks == 3:
+            self.logo_clicks = 0
+            self.reset_application()
+
+    def reset_application(self):
+        reply = QMessageBox.question(self, 'Reset Application',
+                                     "Are you sure you want to reset all settings and clear caches? The application will restart.",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                config = ConfigManager()
+
+                nugget_exports_dir = os.path.join(config.config_dir, 'nugget-exports')
+                if os.path.exists(nugget_exports_dir):
+                    shutil.rmtree(nugget_exports_dir)
+
+                assets_cache_dir = os.path.join(config.config_dir, 'assets-cache')
+                if os.path.exists(assets_cache_dir):
+                    shutil.rmtree(assets_cache_dir)
+
+                config.reset_to_defaults()
+                
+                self.result = ("reset", None)
+                self.accept()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not reset settings: {e}")
 
     def setup_animations(self):
         welcome_widgets = [self.icon_label, self.title_label, self.version_label]

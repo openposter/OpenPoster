@@ -462,30 +462,6 @@ QTableWidget::item:first-column {
         <number>5</number>
        </property>
        <item>
-        <widget class="QPushButton" name="openFile">
-         <property name="autoFillBackground">
-          <bool>false</bool>
-         </property>
-         <property name="styleSheet">
-          <string notr="true">QPushButton {
-  border: 1.5px solid palette(highlight);
-  border-radius: 8px;
-  padding: 3px 8px;
-  background-color: rgba(80, 120, 200, 30);
-}
-QPushButton:pressed {
-  background-color: rgba(60, 100, 180, 120);
-}</string>
-         </property>
-         <property name="text">
-          <string>Open File</string>
-         </property>
-         <property name="fixedHeight" stdset="0">
-          <number>30</number>
-         </property>
-        </widget>
-       </item>
-       <item>
         <widget class="QLabel" name="filename">
          <property name="minimumSize">
           <size>

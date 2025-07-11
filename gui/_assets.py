@@ -7,6 +7,8 @@ class Assets:
         self.cafilepath = ""
         self.cachedImages = {}
         self.missing_assets = set()
+        self.config_dir = os.path.join(os.path.expanduser("~"), ".openposter")
+        self.assets_cache_dir = os.path.join(self.config_dir, "assets-cache")
 
         if hasattr(sys, '_MEIPASS'):
             self.app_base_path = sys._MEIPASS
@@ -18,12 +20,27 @@ class Assets:
             return None
         
         if src_path in self.cachedImages:
+            print(f"Found image in memory cache: {src_path}")
             return self.cachedImages[src_path]
         
+        filename = os.path.basename(src_path)
+        cache_path = os.path.join(self.assets_cache_dir, filename)
+        if os.path.exists(cache_path):
+            print(f"Found image directly in assets cache: {cache_path}")
+            try:
+                img = QImage(cache_path)
+                if not img.isNull():
+                    pixmap = QPixmap.fromImage(img)
+                    self.cachedImages[src_path] = pixmap
+                    return pixmap
+            except Exception as e:
+                print(f"Error loading cached image {cache_path}: {e}")
+        
         asset_path = self.findAssetPath(src_path)
-
+        
         if not asset_path or not os.path.exists(asset_path):
             print(f"Could not find asset: {src_path}")
+            print(f"Checked in assets cache: {cache_path}")
             
             if not hasattr(self, 'missing_assets'):
                 self.missing_assets = set()
@@ -48,7 +65,20 @@ class Assets:
     def findAssetPath(self, src_path):
         if not src_path:
             return None
-        
+
+        if src_path.startswith("assets/"):
+            filename = os.path.basename(src_path)
+            cache_path = os.path.join(self.assets_cache_dir, filename)
+            if os.path.exists(cache_path):
+                print(f"Found asset in cache directory: {cache_path}")
+                return cache_path
+
+        filename = os.path.basename(src_path)
+        cache_path = os.path.join(self.assets_cache_dir, filename)
+        if os.path.exists(cache_path):
+            print(f"Found asset in cache by basename: {cache_path}")
+            return cache_path
+
         if src_path.startswith("themes/") or src_path.startswith("icons/") or src_path.startswith("assets/"):
             app_level_path = os.path.join(self.app_base_path, src_path)
             if os.path.exists(app_level_path):
