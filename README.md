@@ -30,4 +30,4 @@ You can see all the supported layers in the .ca file.
 ### Exporting
 You can save as a new .ca file or a .tendies file, as well as exporting to Nugget directly.
 
-<img width="1527" alt="image" src="https://github.com/user-attachments/assets/8f415f35-9110-4551-9fa0-b8c0ad029410" /><div align="center">
+<img width="1527" alt="image" src="https://github.com/user-attachments/assets/2d98df84-6808-4e1d-93d1-13282f42e63c" /><div align="center">
