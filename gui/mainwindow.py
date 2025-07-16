@@ -80,6 +80,8 @@ class MainWindow(QMainWindow):
 
     def retranslate_ui(self):
         self.ui.retranslateUi(self)
+        self.ui.treeWidget.clear()
+        self.ui.statesTreeWidget.clear()
         self.populateLayersTreeWidget()
         self.populateStatesTreeWidget()
 
