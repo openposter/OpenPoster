@@ -1,3 +1,4 @@
+import os
 from PySide6.QtCore import QEvent
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
@@ -11,6 +12,18 @@ class ThemeManager:
         theme = self.config.get_config("ui_theme", "dark")
         is_dark = (theme == "dark")
         self.window.isDarkMode = is_dark
+
+        qss_file = "themes/dark_style.qss" if is_dark else "themes/light_style.qss"
+        qss_path = os.path.join(self.window.app_base_path, qss_file)
+
+        if os.path.exists(qss_path):
+            try:
+                with open(qss_path, "r") as f:
+                    qss = f.read()
+                    QApplication.instance().setStyleSheet(qss)
+            except Exception as e:
+                print(f"Could not load global QSS '{qss_path}': {e}")
+
         if is_dark:
             self.apply_dark_mode_styles()
         else:
@@ -34,6 +47,10 @@ class ThemeManager:
                         widget = getattr(window.ui, name, None)
                         if widget:
                             widget.setObjectName(name)
+                    for name in ('openFile', 'filename'):
+                        w = getattr(window.ui, name, None)
+                        if w:
+                            w.setStyleSheet("")
             except Exception as e:
                 print(f"[ThemeManager] Error applying dark QSS: {e}")
         scene = getattr(window, 'scene', None)
@@ -71,6 +88,10 @@ QTableWidget#tableWidget QHeaderView::section { background-color:#424242; color:
                         widget = getattr(window.ui, name, None)
                         if widget:
                             widget.setObjectName(name)
+                    for name in ('openFile', 'filename'):
+                        w = getattr(window.ui, name, None)
+                        if w:
+                            w.setStyleSheet("")
             except Exception as e:
                 print(f"[ThemeManager] Error applying light QSS: {e}")
         scene = getattr(window, 'scene', None)
@@ -85,6 +106,9 @@ QTableWidget#tableWidget QHeaderView::section { background-color:#424242; color:
                 f"QPushButton:hover {{ background-color: rgba(0,0,0,0.1); }}"
                 f"QPushButton:pressed {{ background-color: rgba(0,0,0,0.2); }}"
             )
+        tw = getattr(window.ui, 'tableWidget', None)
+        if tw:
+            tw.setStyleSheet("")
 
     def update_category_headers(self):
         from PySide6.QtGui import QColor

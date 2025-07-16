@@ -2,6 +2,7 @@ from PySide6.QtCore import QRectF, QPointF, Qt
 from PySide6.QtGui import QTransform
 from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsPixmapItem, QGraphicsTextItem
 from PySide6.QtGui import QPen, QBrush, QColor
+import os
 
 class PreviewRenderer:
     def __init__(self, window):
@@ -12,6 +13,7 @@ class PreviewRenderer:
         self.load_image = window.loadImage
         self.parse_transform = window.parseTransform
         self.parse_color = window.parseColor
+        self.layer_colors = {}
         self.animations = []
 
     def render_preview(self, root_layer, target_state=None):
@@ -30,7 +32,7 @@ class PreviewRenderer:
 
         border = QGraphicsRectItem(bounds)
         border.setPen(QPen(QColor(0, 0, 0), 2))
-        border.setBrush(QBrush(Qt.transparent))
+        border.setBrush(QBrush(QColor(255, 255, 255)))
         self.scene.addItem(border)
 
         base_state = None
@@ -41,6 +43,10 @@ class PreviewRenderer:
 
         rect = self.scene.itemsBoundingRect()
         self.scene.setSceneRect(rect)
+
+        for item in self.scene.items():
+            if item.data(1) == 'Layer':
+                self.scene.makeItemEditable(item)
 
         if hasattr(self.animation_helper, 'animations'):
             self.animations = list(self.animation_helper.animations)
@@ -56,10 +62,20 @@ class PreviewRenderer:
                     self.render_layer(sub, QPointF(0, 0), parent_transform, base_state, target_state)
             return
 
+        try:
+            root_h = float(self.window.cafile.rootlayer.bounds[3])
+        except Exception:
+            root_h = 1000
+
+        is_flipped = getattr(self.window.cafile.rootlayer, 'geometryFlipped', "0") == "1"
+
         pos = QPointF(0, 0)
         if hasattr(layer, 'position') and layer.position:
             try:
-                pos = QPointF(float(layer.position[0]), float(layer.position[1]))
+                y = float(layer.position[1])
+                if not is_flipped:
+                    y = root_h - y
+                pos = QPointF(float(layer.position[0]), y)
             except Exception:
                 pass
 
@@ -75,13 +91,17 @@ class PreviewRenderer:
         if hasattr(layer, 'transform') and layer.transform:
             transform = transform * self.parse_transform(layer.transform)
 
-        anchor = QPointF(0.5, 0.5)
-        if hasattr(layer, 'anchorPoint') and layer.anchorPoint:
-            try:
-                ax, ay = map(float, layer.anchorPoint.split()[:2])
-                anchor = QPointF(ax, ay)
-            except Exception:
-                pass
+        anchor_str = getattr(layer, 'anchorPoint', "0.5 0.5") or "0.5 0.5"
+        try:
+            anchor_parts = anchor_str.split()
+            anchor = QPointF(float(anchor_parts[0]), float(anchor_parts[1]))
+        except (ValueError, IndexError):
+            anchor = QPointF(0.5, 0.5)
+
+        if is_flipped:
+            qt_anchor = QPointF(anchor.x(), anchor.y())
+        else:
+            qt_anchor = QPointF(anchor.x(), 1.0 - anchor.y())
 
         zpos = float(getattr(layer, 'zPosition', 0) or 0)
         try:
@@ -103,7 +123,7 @@ class PreviewRenderer:
                         key, val = el.keyPath, el.value
                         try:
                             if key == 'position.x': pos.setX(float(val))
-                            elif key == 'position.y': pos.setY(float(val))
+                            elif key == 'position.y': pos.setY(root_h - float(val))
                             elif key == 'transform': transform = self.parse_transform(val) * parent_transform
                             elif key == 'opacity': opacity = float(val)
                             elif key == 'zPosition': zpos = float(val)
@@ -133,8 +153,19 @@ class PreviewRenderer:
             if hasattr(layer, 'color') and layer.color:
                 c = self.parse_color(layer.color)
                 if c: item.setDefaultTextColor(c)
-            item.setTransformOriginPoint(bounds.width()*anchor.x(), bounds.height()*anchor.y())
-            item.setPos(QPointF(pos.x() - bounds.width()*anchor.x(), pos.y() - bounds.height()*anchor.y()))
+            
+            item_pos = QPointF(
+                pos.x() - bounds.width() * qt_anchor.x(),
+                pos.y() - bounds.height() * qt_anchor.y()
+            )
+
+            transform_origin = QPointF(
+                bounds.width() * qt_anchor.x(),
+                bounds.height() * qt_anchor.y()
+            )
+
+            item.setTransformOriginPoint(transform_origin)
+            item.setPos(item_pos)
             item.setTransform(transform)
             item.setZValue(zpos)
             item.setOpacity(opacity)
@@ -146,13 +177,23 @@ class PreviewRenderer:
         elif hasattr(layer, '_content') and layer._content is not None:
             src = getattr(layer.content, 'src', None)
             if src:
+                if hasattr(self.window, 'config_manager'):
+                    self.assets.config_dir = self.window.config_manager.config_dir
+                    self.assets.assets_cache_dir = os.path.join(self.assets.config_dir, 'assets-cache')
+                
                 self.assets.cafilepath = self.window.cafilepath
                 self.assets.cachedImages = self.window.cachedImages
+                
+                print(f"Trying to load image: {src}")
                 pix = self.load_image(src)
                 self.window.cachedImages = self.assets.cachedImages
-                if not pix and src in self.window.missing_assets:
-                    missing_asset = True
-                if pix:
+                
+                if not pix:
+                    print(f"Failed to load image: {src}")
+                    if src in self.window.missing_assets:
+                        missing_asset = True
+                else:
+                    print(f"Successfully loaded image: {src}")
                     pitem = QGraphicsPixmapItem()
                     pitem.setPixmap(pix)
                     sx = bounds.width()/pix.width() if pix.width()>0 else 1
@@ -160,8 +201,19 @@ class PreviewRenderer:
                     tf = QTransform().scale(sx, sy)
                     pitem.setTransform(tf*transform)
                     ww, hh = pix.width()*sx, pix.height()*sy
-                    pitem.setTransformOriginPoint(ww*anchor.x(), hh*anchor.y())
-                    pitem.setPos(QPointF(pos.x() - ww*anchor.x(), pos.y() - hh*anchor.y()))
+                    
+                    item_pos = QPointF(
+                        pos.x() - ww * qt_anchor.x(),
+                        pos.y() - hh * qt_anchor.y()
+                    )
+
+                    transform_origin = QPointF(
+                        ww * qt_anchor.x(),
+                        hh * qt_anchor.y()
+                    )
+
+                    pitem.setTransformOriginPoint(transform_origin)
+                    pitem.setPos(item_pos)
                     pitem.setTransformationMode(Qt.SmoothTransformation)
                     pitem.setZValue(zpos)
                     pitem.setOpacity(opacity)
@@ -173,13 +225,28 @@ class PreviewRenderer:
 
         if not has_content:
             rect = QGraphicsRectItem(bounds)
-            rect.setTransformOriginPoint(bounds.width()*anchor.x(), bounds.height()*anchor.y())
-            rect.setPos(QPointF(pos.x() - bounds.width()*anchor.x(), pos.y() - bounds.height()*anchor.y()))
+            
+            item_pos = QPointF(
+                pos.x() - bounds.width() * qt_anchor.x(),
+                pos.y() - bounds.height() * qt_anchor.y()
+            )
+
+            transform_origin = QPointF(
+                bounds.width() * qt_anchor.x(),
+                bounds.height() * qt_anchor.y()
+            )
+
+            rect.setTransformOriginPoint(transform_origin)
+            rect.setPos(item_pos)
             rect.setTransform(transform)
             rect.setZValue(zpos)
             rect.setOpacity(opacity)
-            pen = QPen(QColor(200,200,200,180),1)
-            brush = QBrush(QColor(180,180,180,30))
+            if layer.id not in self.layer_colors:
+                hue = abs(hash(layer.id)) % 360
+                self.layer_colors[layer.id] = QColor.fromHsv(hue, 200, 200)
+            base_color = self.layer_colors[layer.id]
+            pen = QPen(base_color.darker(), 1)
+            brush = QBrush(base_color)
             if layer.id == self.window.cafile.rootlayer.id:
                 pen = QPen(QColor(0,0,0,200),1.5)
                 brush = QBrush(Qt.transparent)
@@ -221,7 +288,7 @@ class PreviewRenderer:
                     item.setSelected(True)
                     self.window.ui.graphicsView.centerOn(item)
         for item in self.scene.items():
-            if hasattr(item,'data') and item.data(0)==layer.id+'_name':
+            if hasattr(item,'data') and layer.id is not None and item.data(0)==layer.id+'_name':
                 item.setDefaultTextColor(QColor(0,120,215))
 
     def highlight_animation(self, layer, animation):
