@@ -292,22 +292,6 @@ class Ui_OpenPoster(object):
         self.horizontalLayout_header = QHBoxLayout(self.headerWidget)
         self.horizontalLayout_header.setObjectName(u"horizontalLayout_header")
         self.horizontalLayout_header.setContentsMargins(5, 5, 5, 5)
-        self.openFile = QPushButton(self.headerWidget)
-        self.openFile.setObjectName(u"openFile")
-        self.openFile.setAutoFillBackground(False)
-        self.openFile.setStyleSheet(u"QPushButton {\n"
-"  border: 1.5px solid palette(highlight);\n"
-"  border-radius: 8px;\n"
-"  padding: 3px 8px;\n"
-"  background-color: rgba(80, 120, 200, 30);\n"
-"}\n"
-"QPushButton:pressed {\n"
-"  background-color: rgba(60, 100, 180, 120);\n"
-"}")
-        self.openFile.setProperty(u"fixedHeight", 30)
-
-        self.horizontalLayout_header.addWidget(self.openFile)
-
         self.filename = QLabel(self.headerWidget)
         self.filename.setObjectName(u"filename")
         self.filename.setMinimumSize(QSize(200, 28))
@@ -513,7 +497,6 @@ class Ui_OpenPoster(object):
     # setupUi
 
     def retranslateUi(self, OpenPoster):
-        self.openFile.setText(QCoreApplication.translate("OpenPoster", u"Open File", None))
         self.filename.setText(QCoreApplication.translate("OpenPoster", u"No File Open", None))
 #if QT_CONFIG(tooltip)
         self.exportButton.setToolTip(QCoreApplication.translate("OpenPoster", u"Export", None))

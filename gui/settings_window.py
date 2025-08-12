@@ -88,13 +88,14 @@ class SettingsDialog(QDialog):
         self.ui.discordButton.clicked.connect(lambda: webbrowser.open("https://discord.gg/t3abQJjHm6"))
         self.on_theme_changed(getattr(self.parent_window, 'isDarkMode', False))
 
-        # Appearance Tab
-        self.appearanceTab = QWidget()
-        self.ui.tabWidget.insertTab(1, self.appearanceTab, "Appearance")
-        appearanceLayout = QVBoxLayout(self.appearanceTab)
-        
+        theme_header = QLabel("Theme")
+        font = theme_header.font()
+        font.setBold(True)
+        theme_header.setFont(font)
+        self.ui.uiTab.layout().addWidget(theme_header)
+
         self.themeTableWidget = QTableWidget()
-        appearanceLayout.addWidget(self.themeTableWidget)
+        self.ui.uiTab.layout().addWidget(self.themeTableWidget)
         
         self.populate_theme_list()
         self.themeTableWidget.itemClicked.connect(self.on_theme_selected)
@@ -345,6 +346,7 @@ class SettingsDialog(QDialog):
                 self.config_manager.set_language(lang_code)
                 if hasattr(self.parent_window, 'load_language'):
                     self.parent_window.load_language(lang_code)
+                    self.parent_window.retranslate_ui()
 
     def on_filename_display_changed(self, value):
         self.config_manager.set_filename_display_mode(value)

@@ -5,6 +5,26 @@ QWidget {
     color: #D0D0D0;
 }
 
+QPushButton QMenu {
+    background-color: #3A3A3A;
+    border: 1px solid #606060;
+    border-radius: 8px;
+    color: #D0D0D0;
+}
+
+QPushButton QMenu::item {
+    background-color: transparent;
+    color: #D0D0D0;
+    padding: 8px 20px;
+    margin: 0px;
+    border-radius: 0px;
+}
+
+QPushButton QMenu::item:selected {
+    background-color: #5A5A5A;
+    color: #FFFFFF;
+}
+
 /* All Headers Styling */
 QHeaderView::section {
     background-color: #424242;
@@ -302,8 +322,17 @@ QInputDialog QLabel {
 
 #openFileButton {
     color: #FFFFFF;
+    border: 1px solid #A0A0A0;
 }
 
 #fileNameLabel {
     color: #FFFFFF;
-} 
+    border: 1px solid #A0A0A0;
+}
+#openFile {
+    border: 1px solid #A0A0A0;
+}
+#filename {
+    border: 1px solid #A0A0A0;
+    border-radius: 8px;
+}

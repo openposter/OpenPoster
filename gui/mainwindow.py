@@ -6,6 +6,7 @@ from PySide6 import QtCore
 from PySide6.QtCore import Qt, QRectF, QPointF, QSize, QEvent, QVariantAnimation, QKeyCombination, QKeyCombination, QTimer, QSettings, QStandardPaths, QDir, QObject, QProcess, QByteArray, QBuffer, QIODevice, QXmlStreamReader, QPoint, QMimeData, QRegularExpression, QTranslator
 from PySide6.QtGui import QPixmap, QImage, QBrush, QPen, QColor, QTransform, QPainter, QLinearGradient, QIcon, QPalette, QFont, QShortcut, QKeySequence, QAction, QCursor, QDesktopServices
 from PySide6.QtWidgets import QFileDialog, QTreeWidgetItem, QMainWindow, QTableWidgetItem, QGraphicsRectItem, QGraphicsPixmapItem, QGraphicsTextItem, QApplication, QHeaderView, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QTreeWidget, QWidget, QGraphicsItemAnimation, QMessageBox, QDialog, QColorDialog, QProgressDialog, QSizePolicy, QSplitter, QFrame, QToolButton, QGraphicsView, QGraphicsScene, QStyleFactory, QSpacerItem, QMenu, QLineEdit, QTableWidget, QTableWidgetItem, QSystemTrayIcon, QGraphicsProxyWidget, QGraphicsDropShadowEffect, QMenu, QTreeWidgetItemIterator, QInputDialog, QSlider, QTextEdit
+from PySide6.QtWidgets import QSpinBox, QAbstractSpinBox
 from ui.ui_mainwindow import Ui_OpenPoster
 from .custom_widgets import CustomGraphicsView, CheckerboardGraphicsScene
 import PySide6.QtCore as QtCore
@@ -14,6 +15,7 @@ import webbrowser
 import re
 import subprocess
 import tempfile, shutil
+import time
 
 import resources_rc
 from gui._meta import __version__
@@ -29,6 +31,7 @@ from .settings_window import SettingsDialog
 from .exportoptions_window import ExportOptionsDialog
 from .theme_manager import ThemeManager
 from .preview_renderer import PreviewRenderer
+from .discord_rpc import DiscordRPC
 
 class MainWindow(QMainWindow):
     def __init__(self, config_manager, translator):
@@ -63,6 +66,9 @@ class MainWindow(QMainWindow):
         
         self.preview = PreviewRenderer(self)
         
+        # Discord RPC
+        self.discord_rpc = DiscordRPC()
+        
         # Restore window geometry
         self.loadWindowGeometry()
         
@@ -71,6 +77,25 @@ class MainWindow(QMainWindow):
         self.isDirty = False
         
         # print(f"OpenPoster v{__version__} started") # Commented out startup message
+
+    def retranslate_ui(self):
+        self.ui.retranslateUi(self)
+        self.ui.treeWidget.clear()
+        self.ui.statesTreeWidget.clear()
+        self.populateLayersTreeWidget()
+        self.populateStatesTreeWidget()
+
+    def load_language(self, lang_code):
+        if hasattr(QApplication.instance(), 'translator'):
+            QApplication.instance().removeTranslator(QApplication.instance().translator)
+
+        translator = QTranslator()
+        if translator.load(f"languages/app_{lang_code}.qm"):
+            QApplication.instance().installTranslator(translator)
+            QApplication.instance().translator = translator
+            self.translator = translator
+        else:
+            print(f"Failed to load translation for {lang_code}")
 
     # app resources
     def initAssetFinder(self):
@@ -100,6 +125,8 @@ class MainWindow(QMainWindow):
         self.applySpringAnimationToItem = self._applyAnimation.applySpringAnimationToItem
 
         self._assets = Assets()
+        self._assets.config_dir = self.config_manager.config_dir
+        self._assets.assets_cache_dir = os.path.join(self._assets.config_dir, 'assets-cache')
         self.findAssetPath = self._assets.findAssetPath
         self.loadImage = self._assets.loadImage
 
@@ -215,35 +242,55 @@ class MainWindow(QMainWindow):
                 root_bounds = [float(b) for b in root_layer.bounds]
                 root_width = root_bounds[2]
                 root_height = root_bounds[3]
-
-                new_height = root_height * 0.3
                 
-                if root_height > 0:
-                    aspect_ratio = root_width / root_height
-                    new_width = new_height * aspect_ratio
-                else:
-                    new_width = root_width * 0.3
-
                 center_x = root_width / 2
                 center_y = root_height / 2
+                
+                if layer_type != "text":
+                    new_height = root_height * 0.3
+                    
+                    if root_height > 0:
+                        aspect_ratio = root_width / root_height
+                        new_width = new_height * aspect_ratio
+                    else:
+                        new_width = root_width * 0.3
+                    
+                    layer.bounds = ['0', '0', str(new_width), str(new_height)]
+                    layer.scale_factor = 0.3
 
-                layer.bounds = ['0', '0', str(new_width), str(new_height)]
                 layer.position = [str(center_x), str(center_y)]
-                layer.scale_factor = 0.3
+                
             except (ValueError, IndexError) as e:
                 print(f"Warning: Could not get root layer bounds to resize new layer: {e}")
                 pass
 
+        parent_layer = None
+        selected_item = self.ui.treeWidget.currentItem()
+
+        if selected_item:
+            item_type = selected_item.text(1)
+            if item_type == "Layer" or item_type == "Root":
+                layer_id = selected_item.text(2)
+                if layer_id:
+                    parent_layer = self.cafile.rootlayer.findlayer(layer_id)
+
+        if not parent_layer:
+            parent_layer = self.cafile.rootlayer
+        
+        if not parent_layer:
+            self.create_themed_message_box(
+                QMessageBox.Critical, 
+                "Error", 
+                "Cannot add a layer. No valid parent layer could be determined."
+            ).exec()
+            return
+        
         if layer_type == "text":
             text, ok = QInputDialog.getText(self, "New Text Layer", "Enter text:", QLineEdit.Normal, getattr(layer, "string", ""))
             if not ok or not text:
                 return
             layer.string = text
             
-            if not hasattr(layer, "fontSize") or not layer.fontSize:
-                root_height = float(root_layer.bounds[3])
-                default_font_size = int(root_height * 0.05 * 2)
-                layer.fontSize = str(default_font_size)
             if not hasattr(layer, "fontFamily") or not layer.fontFamily:
                 layer.fontFamily = "Helvetica"
             if not hasattr(layer, "alignmentMode") or not layer.alignmentMode:
@@ -251,6 +298,14 @@ class MainWindow(QMainWindow):
             if not hasattr(layer, "color") or not layer.color:
                 layer.color = "255 255 255"
                 
+            default_font_size = 24
+            if not hasattr(layer, "fontSize") or not layer.fontSize:
+                layer.fontSize = str(default_font_size)
+                
+            text_width = len(text) * default_font_size * 0.6
+            text_height = default_font_size * 1.2
+            layer.bounds = ['0', '0', str(text_width), str(text_height)]
+            layer.layer_class = "CATextLayer"
         elif layer_type == "image":
             image_path, _ = QFileDialog.getOpenFileName(self, "Select Image File", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)")
             if not image_path:
@@ -269,17 +324,38 @@ class MainWindow(QMainWindow):
                         new_width = current_height * aspect_ratio
                         
                         layer.bounds[2] = str(new_width)
+
+                    assets_cache_dir = os.path.join(self.config_manager.config_dir, 'assets-cache')
+                    if not os.path.exists(assets_cache_dir):
+                        os.makedirs(assets_cache_dir)
+
+                    image_filename = os.path.basename(image_path)
+                    dest_path = os.path.join(assets_cache_dir, image_filename)
+
+                    shutil.copy2(image_path, dest_path)
+                    
+                    layer.content.src = f"assets/{image_filename}"
+
+                    if hasattr(self.cafile, 'assets'):
+                        with open(image_path, 'rb') as f:
+                            self.cafile.assets[image_filename] = f.read()
+                            
+                    print(f"Copied image to cache: {dest_path} and set path to assets/{image_filename}")
+
+                    self.cachedImages = {}
+                    if hasattr(self._assets, 'cachedImages'):
+                        self._assets.cachedImages = {}
             except Exception as e:
-                print(f"Could not resize image based on aspect ratio: {e}")
+                print(f"Could not process image: {e}")
 
-            layer.content.src = image_path
+                try:
+                    image_filename = os.path.basename(image_path)
+                    layer.content.src = f"assets/{image_filename}"
+                    print(f"Error occurred but still using relative path: assets/{image_filename}")
+                except:
+                    layer.content.src = image_path
 
-        if hasattr(self, "currentInspectObject"):
-            element = self.currentInspectObject
-        else:
-            element = self.cafile.rootlayer
-
-        element.addlayer(layer)
+        parent_layer.addlayer(layer)
         self.ui.treeWidget.clear()
         self.populateLayersTreeWidget()
         self.renderPreview(self.cafile.rootlayer)
@@ -332,14 +408,32 @@ class MainWindow(QMainWindow):
         self.ui.addButton.setMenu(self.add_menu_ui)
         self.ui.addButton.setEnabled(True)
 
-        self.ui.openFile.clicked.connect(self.openFile)
         self.ui.treeWidget.currentItemChanged.connect(self.openInInspector)
+        self.ui.treeWidget.setColumnHidden(2, True)
         self.ui.statesTreeWidget.currentItemChanged.connect(self.openStateInInspector)
         self.ui.tableWidget.itemChanged.connect(self.onInspectorChanged)
-        self.ui.tableWidget.verticalHeader().setDefaultSectionSize(self.ui.tableWidget.fontMetrics().height() * 2.5)
+        self.ui.tableWidget.verticalHeader().setDefaultSectionSize(self.ui.tableWidget.fontMetrics().height() * 2.3)
+        table_header = self.ui.tableWidget.horizontalHeader()
+        table_header.setFixedHeight(int(self.ui.tableWidget.fontMetrics().height() * 2.5))
+        for i in range(self.ui.tableWidget.columnCount()):
+            item = self.ui.tableWidget.horizontalHeaderItem(i)
+            if item:
+                item.setTextAlignment(Qt.AlignCenter)
+        tree_header = self.ui.treeWidget.header()
+        tree_header.setFixedHeight(int(self.ui.treeWidget.fontMetrics().height() * 2.3))
+        tree_header_item = self.ui.treeWidget.headerItem()
+        for i in range(self.ui.treeWidget.columnCount()):
+            tree_header_item.setTextAlignment(i, Qt.AlignCenter)
+        states_header = self.ui.statesTreeWidget.header()
+        states_header.setFixedHeight(int(self.ui.statesTreeWidget.fontMetrics().height() * 2.3))
+        states_header_item = self.ui.statesTreeWidget.headerItem()
+        for i in range(self.ui.statesTreeWidget.columnCount()):
+            states_header_item.setTextAlignment(i, Qt.AlignCenter)
         self.ui.filename.mousePressEvent = self.toggleFilenameDisplay
         self.showFullPath = True
         
+        self.show_inspector_placeholder()
+
         self.scene = CheckerboardGraphicsScene()
         # Initialize animation helper now that scene exists
         from ._applyanimation import ApplyAnimation
@@ -448,6 +542,7 @@ class MainWindow(QMainWindow):
             self.isDirty = False
             self.ui.addButton.setEnabled(True)
             self.updateFilenameDisplay()
+            self.discord_rpc.start()
         except Exception as e:
             self.create_themed_message_box(
                 QMessageBox.Critical, 
@@ -512,16 +607,13 @@ class MainWindow(QMainWindow):
             if hasattr(self.scene, 'currentEditableItem') and self.scene.currentEditableItem:
                 self.scene.currentEditableItem.removeBoundingBox()
                 self.scene.currentEditableItem = None
-            self.ui.tableWidget.blockSignals(True)
-            self.ui.tableWidget.setRowCount(0)
-            self.ui.tableWidget.blockSignals(False)
-            self.currentInspectObject = None
+            self.show_inspector_placeholder()
             return
-        self.ui.tableWidget.blockSignals(True)
-        self.currentInspectObject = None
 
-        self.currentSelectedItem = current
+        self.ui.tableWidget.horizontalHeader().setVisible(True)
+        self.ui.tableWidget.blockSignals(True)
         self.ui.tableWidget.setRowCount(0)
+        
         row_index = 0
 
         element_type = current.text(1)
@@ -897,6 +989,30 @@ class MainWindow(QMainWindow):
                     if hasattr(element, "tracking") and element.tracking:
                         self.add_inspector_row("TRACKING", self.formatFloat(element.tracking), row_index)
                         row_index += 1
+                    
+                    if hasattr(element, "leading") and element.leading:
+                        self.add_inspector_row("LEADING", self.formatFloat(element.leading), row_index)
+                        row_index += 1
+                    
+                    if hasattr(element, "verticalAlignmentMode") and element.verticalAlignmentMode:
+                        self.add_inspector_row("VERTICAL ALIGNMENT", element.verticalAlignmentMode, row_index)
+                        row_index += 1
+                    
+                    if hasattr(element, "resizingMode") and element.resizingMode:
+                        self.add_inspector_row("RESIZING MODE", element.resizingMode, row_index)
+                        row_index += 1
+                    
+                    if hasattr(element, "allowsEdgeAntialiasing"):
+                        self.add_inspector_row("EDGE ANTIALIASING", "Yes" if element.allowsEdgeAntialiasing else "No", row_index)
+                        row_index += 1
+                    
+                    if hasattr(element, "allowsGroupOpacity"):
+                        self.add_inspector_row("GROUP OPACITY", "Yes" if element.allowsGroupOpacity else "No", row_index)
+                        row_index += 1
+                    
+                    if hasattr(element, "classIfAvailable") and element.classIfAvailable:
+                        self.add_inspector_row("CLASS IF AVAILABLE", element.classIfAvailable, row_index)
+                        row_index += 1
                 
                 relationships_properties = False
                 if (hasattr(element, "states") and element.states) or \
@@ -954,6 +1070,8 @@ class MainWindow(QMainWindow):
         
         self.ui.tableWidget.setItem(row_index, 0, header_item)
         self.ui.tableWidget.setSpan(row_index, 0, 1, 2)
+        header_item.setTextAlignment(Qt.AlignCenter)
+        self.ui.tableWidget.setRowHeight(row_index, int(self.ui.tableWidget.fontMetrics().height() * 2.3))
         
         return row_index + 1
         
@@ -1004,11 +1122,22 @@ class MainWindow(QMainWindow):
                             is_text_layer = hasattr(layer, "layer_class") and layer.layer_class == "CATextLayer"
                             
                             if is_text_layer:
-                                base_font_size = root_height * 0.05
-                                new_font_size = base_font_size * scale_factor
-                                
                                 if hasattr(layer, "fontSize"):
-                                    layer.fontSize = str(int(new_font_size))
+                                    if hasattr(layer, "original_font_size"):
+                                        original_font_size = float(layer.original_font_size)
+                                    else:
+                                        original_font_size = float(layer.fontSize)
+                                        layer.original_font_size = original_font_size
+
+                                    new_font_size = original_font_size * scale_factor
+                                    layer.fontSize = str(int(max(1, new_font_size)))
+
+                                    if hasattr(layer, "string") and layer.string:
+                                        text = layer.string
+                                        text_width = len(text) * new_font_size * 0.6
+                                        text_height = new_font_size * 1.2
+                                        layer.bounds[2] = str(text_width)
+                                        layer.bounds[3] = str(text_height)
                             else:
                                 target_height = root_height * scale_factor
                                 
@@ -1038,6 +1167,42 @@ class MainWindow(QMainWindow):
             slider_layout.addWidget(scale_label)
             
             self.ui.tableWidget.setCellWidget(row_index, 1, slider_widget)
+            self.ui.tableWidget.setRowHeight(row_index, int(self.ui.tableWidget.fontMetrics().height() * 3))
+        elif key == "OPACITY":
+            slider_widget = QWidget()
+            slider_layout = QHBoxLayout(slider_widget)
+            slider_layout.setContentsMargins(2, 2, 2, 2)
+            opacity_slider = QSlider(Qt.Horizontal)
+            opacity_slider.setRange(0, 100)
+            try:
+                current_percent = float(value_str)
+            except:
+                current_percent = 100.0
+            opacity_slider.setValue(int(current_percent))
+            opacity_slider.setTickPosition(QSlider.TicksBelow)
+            opacity_slider.setTickInterval(10)
+            opacity_label = QLabel(f"{int(current_percent)}%")
+            def update_opacity_label(v):
+                opacity_label.setText(f"{v}%")
+            update_timer_op = QTimer()
+            update_timer_op.setSingleShot(True)
+            update_timer_op.setInterval(50)
+            def apply_opacity(v):
+                op = v / 100.0
+                if hasattr(self, 'currentInspectObject') and self.currentInspectObject:
+                    layer = self.currentInspectObject
+                    layer.opacity = str(op)
+                    if not update_timer_op.isActive():
+                        update_timer_op.timeout.connect(lambda: self.renderPreview(self.cafile.rootlayer))
+                        update_timer_op.start()
+                    self.markDirty()
+            opacity_slider.valueChanged.connect(update_opacity_label)
+            opacity_slider.valueChanged.connect(lambda v: apply_opacity(v))
+            opacity_slider.sliderReleased.connect(lambda: self.renderPreview(self.cafile.rootlayer))
+            slider_layout.addWidget(opacity_slider)
+            slider_layout.addWidget(opacity_label)
+            self.ui.tableWidget.setCellWidget(row_index, 1, slider_widget)
+            self.ui.tableWidget.setRowHeight(row_index, int(self.ui.tableWidget.fontMetrics().height() * 3))
         elif isinstance(value, bool) or (isinstance(value_str, str) and value_str.lower() in ["yes", "no", "true", "false"]):
             if isinstance(value, bool):
                 display_value = "Yes" if value else "No"
@@ -1050,6 +1215,56 @@ class MainWindow(QMainWindow):
             value_item = QTableWidgetItem(self.formatFloat(value) if isinstance(value, (float)) else str(value))
             self.ui.tableWidget.setItem(row_index, 1, value_item)
             
+        elif key == "BACKGROUND COLOR" or key == "COLOR":
+            widget = QWidget()
+            layout = QHBoxLayout(widget)
+            layout.setContentsMargins(2, 2, 2, 2)
+            line_edit = QLineEdit(value_str)
+            button = QPushButton()
+            button.setFixedSize(20, 20)
+            
+            def update_button(col_str):
+                col = self.parseColor(col_str)
+                if col and isinstance(col, QColor):
+                    if col.alpha() != 255:
+                        css_col = f"rgba({col.red()},{col.green()},{col.blue()},{col.alpha()/255:.2f})"
+                    else:
+                        css_col = col.name()
+                else:
+                    css_col = ''
+                button.setStyleSheet(f"background-color: {css_col}; border: 1px solid black;")
+            
+            update_button(value_str)
+            
+            def apply_color_change(col_str):
+                if hasattr(self, 'currentInspectObject'):
+                    layer = self.currentInspectObject
+                    if key == "BACKGROUND COLOR":
+                        layer.backgroundColor = col_str
+                    elif key == "COLOR":
+                        layer.color = col_str
+                    update_button(col_str)
+                    self.renderPreview(self.cafile.rootlayer)
+                    self.markDirty()
+
+            def on_text_changed():
+                apply_color_change(line_edit.text())
+
+            def pick_color():
+                initial = self.parseColor(line_edit.text())
+                color = QColorDialog.getColor(initial, self, "Select Color")
+                if color.isValid():
+                    col_str = color.name() if color.alpha() == 255 else f"rgba({color.red()},{color.green()},{color.blue()},{color.alpha()/255:.2f})"
+                    line_edit.setText(col_str)
+                    apply_color_change(col_str)
+
+            button.clicked.connect(pick_color)
+            line_edit.editingFinished.connect(on_text_changed)
+            
+            layout.addWidget(line_edit)
+            layout.addWidget(button)
+            self.ui.tableWidget.setCellWidget(row_index, 1, widget)
+            self.ui.tableWidget.setRowHeight(row_index, int(self.ui.tableWidget.fontMetrics().height() * 3))
         elif value_str.startswith("#") and (len(value_str) == 7 or len(value_str) == 9):
             try:
                 color = QColor(value_str)
@@ -1069,10 +1284,71 @@ class MainWindow(QMainWindow):
             try:
                 parts = value_str.split()
                 if len(parts) == 2:
-                    value_item = QTableWidgetItem(f"X: {self.formatFloat(float(parts[0]))}, Y: {self.formatFloat(float(parts[1]))}")
+                    if key == "POSITION":
+                        pos_widget = QWidget()
+                        pos_layout = QHBoxLayout(pos_widget)
+                        pos_layout.setContentsMargins(2, 2, 2, 2)
+                        x_spin = QSpinBox()
+                        x_spin.setRange(-10000, 10000)
+                        x_spin.setValue(int(float(parts[0])))
+                        x_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+                        y_spin = QSpinBox()
+                        y_spin.setRange(-10000, 10000)
+                        y_spin.setValue(int(float(parts[1])))
+                        y_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+                        def on_x_changed(val):
+                            layer = self.currentInspectObject
+                            if layer and hasattr(layer, "position"):
+                                layer.position[0] = str(val)
+                                self.renderPreview(self.cafile.rootlayer)
+                                self.markDirty()
+                        x_spin.valueChanged.connect(on_x_changed)
+                        def on_y_changed(val):
+                            layer = self.currentInspectObject
+                            if layer and hasattr(layer, "position"):
+                                layer.position[1] = str(val)
+                                self.renderPreview(self.cafile.rootlayer)
+                                self.markDirty()
+                        y_spin.valueChanged.connect(on_y_changed)
+                        pos_layout.addWidget(x_spin)
+                        pos_layout.addWidget(y_spin)
+                        self.ui.tableWidget.setCellWidget(row_index, 1, pos_widget)
+                        self.ui.tableWidget.setRowHeight(row_index, int(self.ui.tableWidget.fontMetrics().height() * 2.5))
+                    else:
+                        value_item = QTableWidgetItem(f"X: {self.formatFloat(float(parts[0]))}, Y: {self.formatFloat(float(parts[1]))}")
                 elif len(parts) == 4:
                     if key == "BOUNDS":
-                        value_item = QTableWidgetItem(f"W: {self.formatFloat(float(parts[2]))}, H: {self.formatFloat(float(parts[3]))}")
+                        spin_widget = QWidget()
+                        spin_layout = QHBoxLayout(spin_widget)
+                        spin_layout.setContentsMargins(2, 2, 2, 2)
+                        width_spin = QSpinBox()
+                        width_spin.setRange(1, 10000)
+                        width_spin.setValue(int(float(parts[2])))
+                        width_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+                        height_spin = QSpinBox()
+                        height_spin.setRange(1, 10000)
+                        height_spin.setValue(int(float(parts[3])))
+                        height_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+                        def on_width_changed(val):
+                            layer = self.currentInspectObject
+                            if layer and hasattr(layer, "bounds"):
+                                layer.bounds[2] = str(val)
+                                self._update_scale_from_bounds(layer)
+                                self.renderPreview(self.cafile.rootlayer)
+                                self.markDirty()
+                        width_spin.valueChanged.connect(on_width_changed)
+                        def on_height_changed(val):
+                            layer = self.currentInspectObject
+                            if layer and hasattr(layer, "bounds"):
+                                layer.bounds[3] = str(val)
+                                self._update_scale_from_bounds(layer)
+                                self.renderPreview(self.cafile.rootlayer)
+                                self.markDirty()
+                        height_spin.valueChanged.connect(on_height_changed)
+                        spin_layout.addWidget(width_spin)
+                        spin_layout.addWidget(height_spin)
+                        self.ui.tableWidget.setCellWidget(row_index, 1, spin_widget)
+                        self.ui.tableWidget.setRowHeight(row_index, int(self.ui.tableWidget.fontMetrics().height() * 2.5))
                     else:
                         value_item = QTableWidgetItem(f"X: {self.formatFloat(float(parts[0]))}, Y: {self.formatFloat(float(parts[1]))}, " +
                                                      f"W: {self.formatFloat(float(parts[2]))}, H: {self.formatFloat(float(parts[3]))}")
@@ -1575,10 +1851,9 @@ class MainWindow(QMainWindow):
         settings_shortcut.activated.connect(self.showSettingsDialog)
         self.shortcuts_list.append(settings_shortcut)
 
-        # Standard shortcut for opening a file
-        open_file_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.Open), self)
-        open_file_shortcut.activated.connect(self.openFile)
-        self.shortcuts_list.append(open_file_shortcut)
+        save_file_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.Save), self)
+        save_file_shortcut.activated.connect(self.saveFile)
+        self.shortcuts_list.append(save_file_shortcut)
 
         export_shortcut_str = self.config_manager.get_export_shortcut()
         if export_shortcut_str:
@@ -1687,6 +1962,7 @@ class MainWindow(QMainWindow):
                 return
         self.saveSplitterSizes()
         self.saveWindowGeometry()
+        self.discord_rpc.stop()
         super().closeEvent(event)
 
     def saveFile(self):
@@ -1835,31 +2111,42 @@ class MainWindow(QMainWindow):
     def _create_tendies_structure(self, base_dir, ca_source_path):
         """Creates the necessary directory structure for a .tendies bundle inside base_dir."""
         try:
-            # Copy descriptors template
-            root = sys._MEIPASS if hasattr(sys, '_MEIPASS') else (os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd())
-            descriptors_src = os.path.join(root, "descriptors")
-            if not os.path.exists(descriptors_src):
-                raise FileNotFoundError("descriptors template directory not found")
+            temp_save_dir = tempfile.mkdtemp()
+            try:
+                ca_basename = os.path.basename(ca_source_path)
+                if not ca_basename:
+                    ca_basename = "export_temp.ca"
                 
-            descriptors_dest = os.path.join(base_dir, "descriptors")
-            shutil.copytree(descriptors_src, descriptors_dest, dirs_exist_ok=True)
+                self.cafile.write_file(ca_basename, temp_save_dir)
+                
+                ca_source_path = os.path.join(temp_save_dir, ca_basename)
+                
+                root = sys._MEIPASS if hasattr(sys, '_MEIPASS') else (os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd())
+                descriptors_src = os.path.join(root, "descriptors")
+                if not os.path.exists(descriptors_src):
+                    raise FileNotFoundError("descriptors template directory not found")
+                    
+                descriptors_dest = os.path.join(base_dir, "descriptors")
+                shutil.copytree(descriptors_src, descriptors_dest, dirs_exist_ok=True)
 
-            # Find the EID directory (assuming only one)
-            eid = next((d for d in os.listdir(descriptors_dest) if os.path.isdir(os.path.join(descriptors_dest, d)) and not d.startswith('.')), None)
-            if not eid:
-                raise FileNotFoundError("Could not find EID directory within descriptors template")
+                eid = next((d for d in os.listdir(descriptors_dest) if os.path.isdir(os.path.join(descriptors_dest, d)) and not d.startswith('.')), None)
+                if not eid:
+                    raise FileNotFoundError("Could not find EID directory within descriptors template")
 
-            # Define the path for the .wallpaper bundle
-            contents_dir = os.path.join(descriptors_dest, eid, "versions", "0", "contents")
-            wallpaper_dir = os.path.join(contents_dir, "OpenPoster.wallpaper")
-            os.makedirs(wallpaper_dir, exist_ok=True)
+                contents_dir = os.path.join(descriptors_dest, eid, "versions", "0", "contents")
+                wallpaper_dir = os.path.join(contents_dir, "OpenPoster.wallpaper")
+                os.makedirs(wallpaper_dir, exist_ok=True)
 
-            # Copy the .ca bundle content into the .wallpaper directory
-            if not os.path.exists(ca_source_path):
-                 raise FileNotFoundError(f".ca source path does not exist: {ca_source_path}")
-            ca_basename = os.path.basename(ca_source_path)
-            ca_dest_dir = os.path.join(wallpaper_dir, ca_basename)
-            shutil.copytree(ca_source_path, ca_dest_dir)
+                if not os.path.exists(ca_source_path):
+                     raise FileNotFoundError(f".ca source path does not exist: {ca_source_path}")
+                
+                ca_dest_dir = os.path.join(wallpaper_dir, ca_basename)
+                shutil.copytree(ca_source_path, ca_dest_dir)
+                print(f"Successfully copied updated .ca content to tendies structure: {ca_dest_dir}")
+                
+            finally:
+                if os.path.exists(temp_save_dir):
+                    shutil.rmtree(temp_save_dir)
             
         except Exception as e:
             print(f"Error creating tendies structure in {base_dir}: {e}")
@@ -1869,21 +2156,36 @@ class MainWindow(QMainWindow):
         self.isDirty = True
 
     def onItemMoved(self, item):
+        if item is None:
+            return
+            
         layer_id = item.data(0)
-        if not layer_id: return
+        if not layer_id: 
+            return
+            
         layer = self.cafile.rootlayer.findlayer(layer_id)
         if layer:
-            pos = item.pos()
-            
             scene_rect = item.sceneBoundingRect()
             w = scene_rect.width()
             h = scene_rect.height()
             
             x0, y0 = (float(b) for b in layer.bounds[:2])
-            
             layer.bounds = [str(x0), str(y0), str(w), str(h)]
 
-            layer.position = [str(pos.x()), str(pos.y())]
+            try:
+                root_h = float(self.cafile.rootlayer.bounds[3])
+            except Exception:
+                root_h = 1000
+
+            center_x = scene_rect.x() + w/2
+            center_y = scene_rect.y() + h/2
+
+            is_flipped = getattr(self.cafile.rootlayer, 'geometryFlipped', "0") == "1"
+
+            if not is_flipped:
+                center_y = root_h - center_y
+
+            layer.position = [str(center_x), str(center_y)]
 
             m11 = item.transform().m11()
             m12 = item.transform().m12()
@@ -1900,16 +2202,32 @@ class MainWindow(QMainWindow):
                 if not label:
                     continue
                 key = label.text()
-                if key == 'POSITION':
-                    self.ui.tableWidget.item(r, 1).setText(self.formatPoint(' '.join(layer.position)))
-                elif key == 'BOUNDS':
-                    self.ui.tableWidget.item(r, 1).setText(self.formatPoint(' '.join(layer.bounds)))
+                widget = self.ui.tableWidget.cellWidget(r, 1)
+                if key == 'POSITION' and widget:
+                    x_spin = widget.layout().itemAt(0).widget()
+                    y_spin = widget.layout().itemAt(1).widget()
+                    x_spin.blockSignals(True)
+                    x_spin.setValue(int(float(layer.position[0])))
+                    x_spin.blockSignals(False)
+                    y_spin.blockSignals(True)
+                    y_spin.setValue(int(float(layer.position[1])))
+                    y_spin.blockSignals(False)
+                elif key == 'BOUNDS' and widget:
+                    w_spin = widget.layout().itemAt(0).widget()
+                    h_spin = widget.layout().itemAt(1).widget()
+                    w_spin.blockSignals(True)
+                    w_spin.setValue(int(float(layer.bounds[2])))
+                    w_spin.blockSignals(False)
+                    h_spin.blockSignals(True)
+                    h_spin.setValue(int(float(layer.bounds[3])))
+                    h_spin.blockSignals(False)
                 elif key == 'TRANSFORM' and layer.transform:
                     self.ui.tableWidget.item(r, 1).setText(self.formatPoint(layer.transform))
             self.ui.tableWidget.blockSignals(False)
         self.markDirty()
 
     def onTransformChanged(self, item):
+        self.onItemMoved(item)
         self.markDirty()
 
     def onInspectorChanged(self, item):
@@ -1937,6 +2255,7 @@ class MainWindow(QMainWindow):
                     self.renderPreview(self.cafile.rootlayer)
                 elif key == 'BOUNDS':
                     self.currentInspectObject.bounds = value.split(" ")
+                    self._update_scale_from_bounds(self.currentInspectObject)
                     self.renderPreview(self.cafile.rootlayer)
                 elif key == 'ANCHOR POINT':
                     self.currentInspectObject.anchorPoint = value
@@ -2044,6 +2363,15 @@ class MainWindow(QMainWindow):
             shutil.rmtree(export_dir)
         os.makedirs(export_dir, exist_ok=True)
 
+        self._clear_assets_cache()
+
+    def _clear_assets_cache(self):
+        assets_cache_dir = os.path.join(self.config_manager.config_dir, 'assets-cache')
+        if os.path.exists(assets_cache_dir):
+            shutil.rmtree(assets_cache_dir)
+        os.makedirs(assets_cache_dir, exist_ok=True)
+        return assets_cache_dir
+
     def open_project(self, path):
         if not path or not os.path.exists(path):
             QMessageBox.warning(self, "Open Error", f"The file or folder does not exist: {path}")
@@ -2135,3 +2463,44 @@ class MainWindow(QMainWindow):
                 
                 self.renderPreview(self.cafile.rootlayer)
                 self.markDirty()
+
+    def _update_scale_from_bounds(self, layer):
+        """Helper function to update scale_factor based on layer bounds"""
+        if hasattr(layer, 'scale_factor') and layer.id != self.cafile.rootlayer.id:
+            try:
+                root_height = float(self.cafile.rootlayer.bounds[3])
+                layer_height = float(layer.bounds[3])
+                new_scale = layer_height / root_height
+                layer.scale_factor = new_scale
+
+                for row in range(self.ui.tableWidget.rowCount()):
+                    key_item = self.ui.tableWidget.item(row, 0)
+                    if key_item and key_item.text() == "SCALE":
+                        scale_widget = self.ui.tableWidget.cellWidget(row, 1)
+                        if scale_widget:
+                            slider = scale_widget.findChild(QSlider)
+                            label = scale_widget.findChild(QLabel)
+                            if slider and label:
+                                slider.blockSignals(True)
+                                slider.setValue(int(new_scale * 100))
+                                slider.blockSignals(False)
+                                label.setText(f"{int(new_scale * 100)}%")
+                return True
+            except (ValueError, IndexError, ZeroDivisionError, AttributeError) as e:
+                print(f"Error updating scale from bounds: {e}")
+        return False
+
+    def show_inspector_placeholder(self):
+        self.ui.tableWidget.blockSignals(True)
+        self.ui.tableWidget.setRowCount(1)
+        
+        placeholder_item = QTableWidgetItem("Select a layer to display properties")
+        placeholder_item.setTextAlignment(Qt.AlignCenter)
+        placeholder_item.setFlags(Qt.ItemIsEnabled)
+
+        self.ui.tableWidget.setItem(0, 0, placeholder_item)
+        self.ui.tableWidget.setSpan(0, 0, 1, self.ui.tableWidget.columnCount())
+        self.ui.tableWidget.horizontalHeader().setVisible(False)
+
+        self.currentInspectObject = None
+        self.ui.tableWidget.blockSignals(False)

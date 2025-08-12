@@ -60,6 +60,11 @@ class Parse:
                     
             if color_str.startswith("#"):
                 return QColor(color_str)
+            if " " in color_str and all(p.replace(".", "", 1).isdigit() for p in color_str.split()):
+                parts = color_str.split()
+                r = int(float(parts[0])); g = int(float(parts[1])); b = int(float(parts[2]))
+                a = float(parts[3]) if len(parts) == 4 else 1.0
+                return QColor(r, g, b, int(a * 255))
         except:
             pass
             
