@@ -13,7 +13,7 @@
 
 ### Prerequisites
 
-Before you begin, ensure you have the following installed on your system:
+Before you begin, ensure you have the following:
 
 - Computer running MacOS, Windows 10/11, or Linux
 - [Python](https://www.python.org/downloads/release/python-3119/) (3.11 recommended)
